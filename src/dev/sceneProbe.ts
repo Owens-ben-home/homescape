@@ -31,6 +31,20 @@ export function pick(x: number, y: number, z: number, dx: number, dy: number, dz
   return hit ? { y: hit.point.y, distance: hit.distance, itemId: itemOf(hit.object) } : null
 }
 
+/** Scene structure for the apartment check: roof groups in the scene (drawn or not) and the ground plane's world height */
+export function structure() {
+  const s = scene()
+  if (!s) return null
+  let roofs = 0
+  let ground: number | null = null
+  s.traverse((o) => {
+    if (o.userData.roof) roofs += 1
+    // The ground is a plane 12.5 cm below the floor of the active level (scene/EditLayer.tsx > Ground)
+    if (o.userData.ground) ground = o.getWorldPosition(new THREE.Vector3()).y
+  })
+  return { roofs, ground }
+}
+
 /** An item's group in the scene: its uuid (changes when rebuilt) and world height */
 export function itemObject(id: string) {
   const s = scene()

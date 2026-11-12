@@ -48,6 +48,10 @@ interface Window {
     demo: () => Promise<void>
     /** Ray in the scene: height, distance and item of the first visible hit (dev/sceneProbe.ts) */
     pick: (x: number, y: number, z: number, dx: number, dy: number, dz: number) => Promise<{ y: number; distance: number; itemId: string | null } | null>
+    /** Apartment mode (Layout.apartment): given { floor } or null it calls setApartment first; returns the current setting (null for a house) */
+    apartment: (next?: { floor: number } | null) => { floor: number } | null
+    /** Roof groups in the scene (drawn or not) and the ground plane's world height (dev/sceneProbe.ts > structure) */
+    sceneStructure: () => Promise<{ roofs: number; ground: number | null } | null>
     /** The item's group in the scene: its id (changes when rebuilt), world height, visible or not */
     itemObject: (id: string) => Promise<{ uuid: string; y: number; visible: boolean } | null>
     /** Open state of cabinets (scene/bins.ts): cabinet id -> open */

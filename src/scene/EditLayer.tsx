@@ -156,6 +156,7 @@ export function Ground({ night, y = 0 }: { night: boolean; y?: number }) {
       <mesh
         rotation-x={-Math.PI / 2}
         position={[0, -0.125 + y, 0]}
+        userData={{ ground: true }}
         receiveShadow
         onPointerDown={onDown}
         onPointerMove={onMove}

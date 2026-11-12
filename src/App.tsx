@@ -519,6 +519,12 @@ export default function App() {
       demo: () => useHa.getState().connectDemo(),
       pick: (x, y, z, dx, dy, dz) => import('@/dev/sceneProbe').then((m) => m.pick(x, y, z, dx, dy, dz)),
       itemObject: (id) => import('@/dev/sceneProbe').then((m) => m.itemObject(id)),
+      // Apartment mode: reads or sets Layout.apartment (a floor turns it on, null turns it off); sceneStructure counts roof groups and gives the ground plane's height
+      apartment: (next) => {
+        if (next !== undefined) useLayout.getState().setApartment(next)
+        return useLayout.getState().layout?.apartment ?? null
+      },
+      sceneStructure: () => import('@/dev/sceneProbe').then((m) => m.structure()),
       sound: () => import('@/audio/engine').then((m) => m.soundDebug()),
       soundUnlock: () => import('@/audio/engine').then((m) => m.unlock()),
       soundNight: () => import('@/audio/ambienceState').then((m) => m.ambienceDebug.callNow()),
