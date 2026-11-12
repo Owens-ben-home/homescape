@@ -340,6 +340,12 @@ export interface Layout {
    * house follows it (scene/sun.ts): in walk mode sunlight comes in through the right window.
    */
   up?: number
+  /**
+   * Apartment mode (missing: a house): the home is one unit in a larger building. `floor` is the building floor it is on,
+   * counted the US way (1 = street level), so the unit's lowest level sits at elevation `floor - 1`. No roofs, the ground
+   * stays at street level far below, nobody waits outside the front door. Helpers: model/apartment.ts, `useApartment`.
+   */
+  apartment?: { floor: number }
 }
 
 export type Selection = { type: 'room' | 'item'; id: string } | null

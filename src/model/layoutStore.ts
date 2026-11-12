@@ -1,7 +1,9 @@
+import { useMemo } from 'react'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { floorNumber, t } from '@/i18n'
 import { asMain, foldTvBacklights, isBound, primaryFirst, withBinding, withoutBinding } from './bindings'
+import { clampFloor, shiftLevels } from './apartment'
 import { connectRooms } from './doors'
 import { areaContents, inRoom, rectsOf, settleWallItems, shiftRoom } from './geometry'
 import { dropLoneGroups, groupMates } from './groups'
@@ -203,6 +205,11 @@ interface LayoutState {
   renameLevel: (id: string, name: string) => void
   /** Compass direction of the top of the plan (degrees, 0 north): the sun's angle relative to the house (Layout.up). */
   setBearing: (deg: number) => void
+  /**
+   * Apartment mode (Layout.apartment): `{ floor }` puts the home on that building floor (1 to 120, 1 = street level) and shifts
+   * every level so the lowest sits at elevation floor - 1; null turns it off and shifts them back so the lowest is 0. Undoable.
+   */
+  setApartment: (next: { floor: number } | null) => void
   /** Deletes a level with everything on it (not the last one). */
   deleteLevel: (id: string) => void
 }
@@ -231,6 +238,21 @@ export const emptyLayout = (): Layout => ({ version: 1, levels: [{ id: uid('lvl'
 
 export const activeLevel = (s: Pick<LayoutState, 'layout' | 'levelId'>): Level | null =>
   s.layout?.levels.find((l) => l.id === s.levelId) ?? s.layout?.levels[0] ?? null
+
+/**
+ * Shifts the levels so the lowest sits at `lowest` (apartment.ts > shiftLevels). Levels without a name of their own are named
+ * from their old number first: "Floor 1" must not turn into "Floor 4" just because the unit sits four floors up.
+ */
+function moveLevels(levels: Level[], lowest: number): Level[] {
+  const shifted = shiftLevels(levels, lowest)
+  return shifted === levels ? levels : shifted.map((l, i) => (unnamedLevel(l) ? { ...l, name: levelName(levels[i]) } : l))
+}
+
+/** The apartment settings of the active home (null: a house). The selector returns a number, so it never re-renders for nothing. */
+export function useApartment(): { floor: number } | null {
+  const floor = useLayout((s) => (s.layout?.apartment ? clampFloor(s.layout.apartment.floor) : 0))
+  return useMemo(() => (floor ? { floor } : null), [floor])
+}
 
 function mapLevel(layout: Layout, levelId: string | null, fn: (l: Level) => Level): Layout {
   const id = levelId ?? layout.levels[0]?.id
@@ -565,6 +587,19 @@ export const useLayout = create<LayoutState>()(
           const up = ((Math.round(deg) % 360) + 360) % 360
           if ((layout.up ?? 0) === up) return
           set({ layout: { ...layout, up }, past: [...past, layout].slice(-HISTORY), future: [] })
+        },
+        setApartment: (next) => {
+          const { layout, past } = get()
+          if (!layout) return
+          const { apartment: was, ...rest } = layout
+          if (!next) {
+            if (!was) return
+            set({ layout: { ...rest, levels: moveLevels(layout.levels, 0) }, past: [...past, layout].slice(-HISTORY), future: [] })
+            return
+          }
+          const floor = clampFloor(next.floor)
+          if (was?.floor === floor) return
+          set({ layout: { ...rest, levels: moveLevels(layout.levels, floor - 1), apartment: { floor } }, past: [...past, layout].slice(-HISTORY), future: [] })
         },
         deleteLevel: (id) => {
           const { layout, past, levelId } = get()
