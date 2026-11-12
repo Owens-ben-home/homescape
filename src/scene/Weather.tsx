@@ -5,7 +5,7 @@ import { play } from '@/audio/engine'
 import { currentWeather, useWeatherPref } from '@/ha/weather'
 import { useHa } from '@/ha/store'
 import { bounds, isOutdoor, rectsOf, WALL_H } from '@/model/geometry'
-import { activeHomeId, activeLevel, useLayout } from '@/model/layoutStore'
+import { activeHomeId, activeLevel, useApartment, useLayout } from '@/model/layoutStore'
 import type { Level } from '@/model/types'
 import { roofView, useView } from './camera'
 import { useAmbient } from './kit/effects'
@@ -157,13 +157,15 @@ function regionOf(level: Level) {
 type Region = ReturnType<typeof regionOf>
 
 /** Ground height texture (per cell): R wall top (roof lifted), G roof surface; both 0 outdoors */
-function floorTexture(region: Region, style: 'tile' | 'concrete') {
+/** Roof surface of the drops' ground: 'none' (apartment mode) has no roof, so the drops stop at the wall top */
+type RoofKind = 'tile' | 'concrete' | 'none'
+function floorTexture(region: Region, style: RoofKind) {
   const data = new Float32Array(region.nx * region.nz * 2)
   for (let k = 0; k < region.nx * region.nz; k++) {
     const dc = region.dist[k]
     if (!dc) continue
     data[k * 2] = WALL_H + 0.05
-    data[k * 2 + 1] = style === 'concrete' ? WALL_H + 0.25 : WALL_H + ROOF_LIFT + ROOF_PITCH * Math.min((dc - 0.5) * CELL, ROOF_MAX / ROOF_PITCH) + 0.05
+    data[k * 2 + 1] = style === 'none' ? WALL_H + 0.05 : style === 'concrete' ? WALL_H + 0.25 : WALL_H + ROOF_LIFT + ROOF_PITCH * Math.min((dc - 0.5) * CELL, ROOF_MAX / ROOF_PITCH) + 0.05
   }
   const t = new THREE.DataTexture(data, region.nx, region.nz, THREE.RGFormat, THREE.FloatType)
   t.minFilter = t.magFilter = THREE.NearestFilter
@@ -171,7 +173,7 @@ function floorTexture(region: Region, style: 'tile' | 'concrete') {
   return t
 }
 
-function Precip({ kind, density, region, style, levelId, wind, night }: { kind: Kind; density: number; region: Region; style: 'tile' | 'concrete'; levelId: string; wind: [number, number]; night: boolean }) {
+function Precip({ kind, density, region, style, levelId, wind, night }: { kind: Kind; density: number; region: Region; style: RoofKind; levelId: string; wind: [number, number]; night: boolean }) {
   const k = KIND[kind]
   const n = Math.min(k.cap, Math.round(region.w * region.d * k.perM2))
   const geo = useMemo(() => {
@@ -220,7 +222,7 @@ function Precip({ kind, density, region, style, levelId, wind, night }: { kind: 
   useFrame(({ clock, camera }) => {
     // In walk mode the area surrounds the camera (rain in every direction), from above it surrounds the house
     const at = useView.getState().fps ? [camera.position.x - region.w / 2, camera.position.z - region.d / 2] : [region.minX, region.minZ]
-    drive(mat, { time: clock.elapsedTime, density, roof: roofView.alpha[levelId] ?? 0, wind, region, at, kind, night, floor: floorTex })
+    drive(mat, { time: clock.elapsedTime, density, roof: style === 'none' ? 1 : (roofView.alpha[levelId] ?? 0), wind, region, at, kind, night, floor: floorTex })
   })
   useEffect(() => {
     weatherDebug[kind] = Math.round(n * density)
@@ -254,7 +256,8 @@ export function Weather() {
   const weather = useMemo(() => currentWeather(entities, pref), [entities, pref])
   const level = useLayout((s) => activeLevel(s))
   const homeId = useLayout((s) => activeHomeId(s))
-  const style = useView((s) => s.roofStyle[homeId] ?? 'tile')
+  const roofStyle = useView((s) => s.roofStyle[homeId] ?? 'tile')
+  const style: RoofKind = useApartment() ? 'none' : roofStyle
   const lite = useView((s) => s.lite)
   const night = useNight()
   // The area is rebuilt only when rooms change (not on every frame while an item is dragged)

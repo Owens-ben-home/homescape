@@ -452,6 +452,8 @@ export const roofView = { covered: false, alpha: {} as Record<string, number> }
  * from afar, lifts on approach), otherwise to Hidden. "Always" is in the floor menu.
  */
 export function toggleRoof() {
+  // Apartment mode has no roof: nothing to toggle
+  if (useLayout.getState().layout?.apartment) return false
   const v = useView.getState()
   v.setRoof(v.roof === 'off' ? 'auto' : 'off')
   return v.roof !== 'off'

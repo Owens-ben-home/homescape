@@ -589,10 +589,12 @@ export interface PeopleInput {
   now: number
   /** Household size (from the settings; default 2) */
   residents: number
+  /** Apartment mode: nobody waits outside the front door (it opens onto a corridor, high above the street), people away are not drawn */
+  apartment?: boolean
 }
 
 /** Plan of the people: mode, how many, who is where. */
-export function planPeople({ level, entities, registry, alarm, now, residents }: PeopleInput): PeoplePlan {
+export function planPeople({ level, entities, registry, alarm, now, residents, apartment }: PeopleInput): PeoplePlan {
   const signals = roomSignals(level, entities, registry, now)
   const anchorOf = new Map(signals.map((s) => [s.roomId, s.anchor]))
   // Someone sits at a computer that is on: strong activity; that room's motion and light are the same person
@@ -604,7 +606,7 @@ export function planPeople({ level, entities, registry, alarm, now, residents }:
   const mode = peopleMode(alarm, now, active.length > 0)
   // Every room with motion at the same time and every computer on is at least one person: more than the household (guests) up to 3 or the household size
   const count = mode === 'away' ? residents : Math.min(Math.max(3, residents), Math.max(residents, desks.length + moved.length))
-  if (mode === 'away' || !level.rooms.length) return { mode, count, active, lit, desk, spots: outsideSpots(level, count) }
+  if (mode === 'away' || !level.rooms.length) return { mode, count, active, lit, desk, spots: apartment ? [] : outsideSpots(level, count) }
   const used = new Set<string>()
   const spots: Spot[] = []
   const take = (s: Spot) => {

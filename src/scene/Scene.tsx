@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { SoundScape } from '@/audio/SoundScape'
 import { useHa } from '@/ha/store'
-import { activeLevel, FLOOR_H, useLayout } from '@/model/layoutStore'
+import { activeLevel, FLOOR_H, useApartment, useLayout } from '@/model/layoutStore'
 import { usePlacement } from '@/model/placement'
 import type { HassEntity } from '@/ha/types'
 import type { Item, Level } from '@/model/types'
@@ -552,7 +552,9 @@ function Contents() {
   // On an upper floor the ground plane drops to the ground floor level (so lower floors show)
   const lower = useView((s) => s.lowerFloors)
   const fps = useView((s) => s.fps)
-  const groundY = lower || fps ? -Math.max(0, level?.elevation ?? 0) * FLOOR_H : 0
+  // Apartment mode: the ground is always the street, far below the unit
+  const apartment = useApartment()
+  const groundY = apartment ? -Math.max(0, level?.elevation ?? 0) * FLOOR_H : lower || fps ? -Math.max(0, level?.elevation ?? 0) * FLOOR_H : 0
 
   if (!level) return null
   return (

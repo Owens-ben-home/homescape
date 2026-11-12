@@ -2,7 +2,7 @@ import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { isOutdoor } from '@/model/geometry'
-import { activeHomeId, activeLevel, FLOOR_H, useLayout } from '@/model/layoutStore'
+import { activeHomeId, activeLevel, FLOOR_H, useApartment, useLayout } from '@/model/layoutStore'
 import type { Level } from '@/model/types'
 import { cameraApi, roofView, useView } from './camera'
 import { markShadows } from './frame'
@@ -65,7 +65,10 @@ export function Roofs() {
   // Roof type of the home ("Roof type" in the floor menu; per home)
   const homeId = useLayout((s) => activeHomeId(s))
   const style = useView((s) => s.roofStyle[homeId] ?? 'tile')
+  // Apartment mode: the unit sits inside a building, so there is no roof at all
+  const apartment = useApartment()
   const entries = useMemo<Entry[]>(() => {
+    if (apartment) return []
     const levels = (useLayout.getState().layout?.levels ?? []).filter((l) => (l.elevation ?? 0) >= 0)
     const flat = style === 'concrete'
     return levels.flatMap((l) => {
@@ -82,7 +85,7 @@ export function Roofs() {
       return [{ id: l.id, elevation: e, geo, top, trim, brick, base: flat ? SLAB : ROOF, trimBase: flat ? PARAPET : TRIM }]
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sig, style])
+  }, [sig, style, !!apartment])
   useEffect(
     () => () => {
       for (const e of entries) {
@@ -114,6 +117,11 @@ export function Roofs() {
     const dt = Math.min(delta, 0.1)
     let changing = false
     let covered = false
+    // Without roofs (apartment mode) no stale per-floor values may remain: the weather reads them
+    if (!entries.length && Object.keys(roofView.alpha).length) {
+      for (const k of Object.keys(roofView.alpha)) delete roofView.alpha[k]
+      changing = true
+    }
     // One nearness for the whole home (diagonal of the largest roof): all roofs lift and come down together
     const diag = Math.max(0, ...entries.map((en) => Math.hypot(en.geo.box.maxX - en.geo.box.minX, en.geo.box.maxZ - en.geo.box.minZ)))
     // Lifts when approaching the home: from slightly outside the home's diagonal
@@ -169,6 +177,7 @@ export function Roofs() {
             else groups.current.delete(en.id)
           }}
           visible={false}
+          userData={{ roof: true }}
         >
           <mesh geometry={en.geo.top} material={en.top} castShadow receiveShadow raycast={noRay} />
           <mesh geometry={en.geo.trim} material={en.trim} castShadow raycast={noRay} />
