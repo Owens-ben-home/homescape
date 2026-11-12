@@ -6,7 +6,7 @@ import { homeDir, homeLayout, switchHomeAnimated } from './homeSwitch'
 import { blockText, useSync } from '@/ha/planSync'
 import { usePlanHistory } from './planHistoryState'
 import { useHa } from '@/ha/store'
-import { activeHomeId, activeLevel, homesOf, levelName, useLayout } from '@/model/layoutStore'
+import { activeHomeId, activeLevel, homesOf, levelName, useApartment, useLayout } from '@/model/layoutStore'
 import { type RoofMode, type RoofStyle, useView } from '@/scene/camera'
 import { floorNumber, t, tn } from '@/i18n'
 
@@ -268,6 +268,7 @@ export function FloorSwitcher() {
   const roof = useView((s) => s.roof)
   const homeId = useLayout((s) => activeHomeId(s))
   const roofStyle = useView((s) => s.roofStyle[homeId] ?? 'tile')
+  const apartment = useApartment()
   const ref = useDismiss(open, () => setOpen(false))
   if (!levels || !active) return null
   const L = () => useLayout.getState()
@@ -320,7 +321,7 @@ export function FloorSwitcher() {
                     setOpen(false)
                   }}
                 >
-                  <span className="grid size-6 shrink-0 place-items-center rounded-md bg-surface-2 font-mono text-[11px] font-semibold">{(l.elevation ?? 0) === 0 ? t('G') : (l.elevation ?? 0) < 0 ? t('B{number}', { number: -(l.elevation ?? 0) }) : floorNumber(l.elevation ?? 0)}</span>
+                  <span className="grid size-6 shrink-0 place-items-center rounded-md bg-surface-2 font-mono text-[11px] font-semibold">{apartment ? (l.elevation ?? 0) + 1 : (l.elevation ?? 0) === 0 ? t('G') : (l.elevation ?? 0) < 0 ? t('B{number}', { number: -(l.elevation ?? 0) }) : floorNumber(l.elevation ?? 0)}</span>
                   <span className="truncate">{levelName(l)}</span>
                   <span className="ml-auto shrink-0 text-[11px] font-normal text-ink-3">{tn(l.rooms.length, '{count} room', '{count} rooms')}</span>
                 </button>
@@ -363,42 +364,44 @@ export function FloorSwitcher() {
             <input type="checkbox" checked={lower} onChange={(e) => useView.getState().setLowerFloors(e.target.checked)} />
             {t('Show lower floors below')}
           </label>
-          {/* Roof (scene/Roofs.tsx): on Auto it shows from afar and comes off when zooming in */}
-          <div className="grid gap-1.5 px-2.5 pb-1 pt-1.5">
-            <span className="text-[12.5px] text-ink-2">{t('Roof')}</span>
-            <div className="flex gap-1" role="radiogroup" aria-label={t('Roof')}>
-              {ROOF_MODES.map(([m, label]) => (
-                <button
-                  key={m}
-                  type="button"
-                  id={`roof-${m}`}
-                  role="radio"
-                  aria-checked={roof === m}
-                  onClick={() => useView.getState().setRoof(m)}
-                  className={`min-h-8 flex-1 rounded-lg text-[12px] font-semibold ${roof === m ? 'bg-brand text-white' : 'bg-surface-2 text-ink-2 hover:text-ink'}`}
-                >
-                  {label}
-                </button>
-              ))}
+          {/* Roof (scene/Roofs.tsx): on Auto it shows from afar and comes off when zooming in. An apartment has none. */}
+          {!apartment && (
+            <div className="grid gap-1.5 px-2.5 pb-1 pt-1.5">
+              <span className="text-[12.5px] text-ink-2">{t('Roof')}</span>
+              <div className="flex gap-1" role="radiogroup" aria-label={t('Roof')}>
+                {ROOF_MODES.map(([m, label]) => (
+                  <button
+                    key={m}
+                    type="button"
+                    id={`roof-${m}`}
+                    role="radio"
+                    aria-checked={roof === m}
+                    onClick={() => useView.getState().setRoof(m)}
+                    className={`min-h-8 flex-1 rounded-lg text-[12px] font-semibold ${roof === m ? 'bg-brand text-white' : 'bg-surface-2 text-ink-2 hover:text-ink'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <span className="text-[11px] leading-snug text-ink-3">{t('Auto: shown when viewed from afar, removed when you zoom in or focus on a room.')}</span>
+              <span className="mt-1 text-[12.5px] text-ink-2">{t('Roof style')}</span>
+              <div className="flex gap-1" role="radiogroup" aria-label={t('Roof style')}>
+                {ROOF_STYLES.map(([m, label]) => (
+                  <button
+                    key={m}
+                    type="button"
+                    id={`roof-style-${m}`}
+                    role="radio"
+                    aria-checked={roofStyle === m}
+                    onClick={() => useView.getState().setRoofStyle(activeHomeId(useLayout.getState()), m)}
+                    className={`min-h-8 flex-1 rounded-lg text-[12px] font-semibold ${roofStyle === m ? 'bg-brand text-white' : 'bg-surface-2 text-ink-2 hover:text-ink'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <span className="text-[11px] leading-snug text-ink-3">{t('Auto: shown when viewed from afar, removed when you zoom in or focus on a room.')}</span>
-            <span className="mt-1 text-[12.5px] text-ink-2">{t('Roof style')}</span>
-            <div className="flex gap-1" role="radiogroup" aria-label={t('Roof style')}>
-              {ROOF_STYLES.map(([m, label]) => (
-                <button
-                  key={m}
-                  type="button"
-                  id={`roof-style-${m}`}
-                  role="radio"
-                  aria-checked={roofStyle === m}
-                  onClick={() => useView.getState().setRoofStyle(activeHomeId(useLayout.getState()), m)}
-                  className={`min-h-8 flex-1 rounded-lg text-[12px] font-semibold ${roofStyle === m ? 'bg-brand text-white' : 'bg-surface-2 text-ink-2 hover:text-ink'}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
+          )}
         </div>
       )}
     </div>

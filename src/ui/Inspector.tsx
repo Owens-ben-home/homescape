@@ -1,4 +1,4 @@
-import { Check, ChevronDown, ChevronUp, PanelBottomOpen, Compass, Copy, PersonStanding, Power, Fish, Group, History, Lightbulb, Link, Pencil, RotateCcw, RotateCw, Search, SquarePlus, Trash2, TriangleAlert, WandSparkles, X } from 'lucide-react'
+import { Building2, Check, ChevronDown, ChevronUp, PanelBottomOpen, Compass, Copy, PersonStanding, Power, Fish, Group, History, Lightbulb, Link, Pencil, RotateCcw, RotateCw, Search, SquarePlus, Trash2, TriangleAlert, WandSparkles, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { canToggle, toggle, turnOffAll } from '@/ha/actions'
 import { friendlyName, isActive, relativeTime, stateLabel } from '@/ha/derive'
@@ -8,7 +8,7 @@ import { BEAM, BODY_COLORS, CATALOG, CONSOLE_LEN, consoleModel, ITEM_PRESETS, OP
 import { kindFor, modelName, variantFor } from '@/model/generate'
 import { doorSides, isOutdoor, isStreetSurface, rectsOf, roomArea, roomAt, wallSnap } from '@/model/geometry'
 import { groupFamily, groupMates, heatingSummary } from '@/model/groups'
-import { activeHomeId, activeLevel, homesOf, useLayout } from '@/model/layoutStore'
+import { activeHomeId, activeLevel, homesOf, useApartment, useLayout } from '@/model/layoutStore'
 import { usePlacement } from '@/model/placement'
 import { maxWidth, PANEL_DEFAULT, usePanel } from './panelState'
 import { checkItem, isWallMounted, MOUNTABLE, mountRange, overlapsRoom, SURFACE_Y, surfaceAt } from '@/model/rules'
@@ -1243,6 +1243,64 @@ function BearingPicker() {
   )
 }
 
+/**
+ * Apartment mode (Layout.apartment): the home is one unit in a larger building. A switch and the building floor (1 = street
+ * level, 1 to 120); the store shifts the levels, the scene drops the roofs and keeps the ground at street level.
+ */
+function ApartmentPicker() {
+  const apartment = useApartment()
+  const setApartment = useLayout((s) => s.setApartment)
+  const floor = apartment?.floor ?? null
+  const [text, setText] = useState(String(floor ?? 1))
+  const [synced, setSynced] = useState(floor)
+  // The field follows undo, redo, a synced plan and another home (derived while rendering, not in an effect)
+  if (floor !== synced) {
+    setSynced(floor)
+    if (floor != null) setText(String(floor))
+  }
+  const label = t('Apartment')
+  return (
+    <div className="grid gap-2 rounded-xl border border-line px-3 py-2 text-[12.5px]" title={t('Marks the home as one unit in a larger building: no roof, the street far below, and nobody waiting outside the front door. Floor 1 is street level.')}>
+      <div className="flex items-center gap-2">
+        <Building2 size={15} className="shrink-0 text-ink-3" />
+        <span className={`min-w-0 flex-1 truncate ${apartment ? 'text-ink' : 'text-ink-2'}`}>{label}</span>
+        <button
+          type="button"
+          id="apartment-toggle"
+          role="switch"
+          aria-checked={Boolean(apartment)}
+          aria-label={label}
+          onClick={() => setApartment(apartment ? null : { floor: Number(text) || 1 })}
+          className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${apartment ? 'bg-brand' : 'bg-line'}`}
+        >
+          <span className={`absolute top-0.5 size-5 rounded-full bg-white shadow transition-[left] ${apartment ? 'left-[18px]' : 'left-0.5'}`} />
+        </button>
+      </div>
+      {apartment && (
+        <label className="flex items-center gap-2">
+          <span className="min-w-0 flex-1 truncate text-ink-2">{t('Building floor')}</span>
+          <input
+            id="apartment-floor"
+            type="number"
+            min={1}
+            max={120}
+            step={1}
+            inputMode="numeric"
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value)
+              const n = Number(e.target.value)
+              if (e.target.value !== '' && Number.isFinite(n)) setApartment({ floor: n })
+            }}
+            onBlur={() => setText(String(apartment.floor))}
+            className="w-20 rounded-xl border border-line bg-surface px-3 py-1.5 text-right font-mono text-[13px] tabular-nums"
+          />
+        </label>
+      )}
+    </div>
+  )
+}
+
 function Overview({ stats }: { stats: Record<string, RoomStats> }) {
   const level = useLayout((s) => activeLevel(s))
   const entities = useHa((s) => s.entities)
@@ -1324,6 +1382,7 @@ function Overview({ stats }: { stats: Record<string, RoomStats> }) {
           )
         })}
         {(level?.rooms.length ?? 0) > 0 && <BearingPicker />}
+        {(level?.rooms.length ?? 0) > 0 && <ApartmentPicker />}
         <p className="text-[12px] leading-relaxed text-ink-3">
           {t('Hover over an item: its button turns it on or off, a click shows the details. Click the door of a cabinet or drawer to open it, click again to close it. Dashboard at the top for all controls, Edit to shape the home.')}
         </p>

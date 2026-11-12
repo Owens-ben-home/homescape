@@ -1,5 +1,6 @@
 import { Box, BrickWall, CircleHelp, Hand, House, Map, Minus, PanelRightClose, PanelRightOpen, Plus, Rotate3d, RotateCcw, RotateCw, Tag, Users, Warehouse, X } from 'lucide-react'
 import { useState } from 'react'
+import { useApartment } from '@/model/layoutStore'
 import { cameraApi, type StreetKinds, toggleRoof, useView } from '@/scene/camera'
 import { usePeoplePlan } from '@/scene/People'
 import { t, tn } from '@/i18n'
@@ -165,6 +166,7 @@ export default function MapControls() {
   const leftDrag = useView((s) => s.leftDrag)
   const innerWalls = useView((s) => s.innerWalls)
   const roof = useView((s) => s.roof)
+  const apartment = useApartment()
   const labels = useView((s) => s.labels)
   const setInnerWalls = useView((s) => s.setInnerWalls)
   const setLeftDrag = useView((s) => s.setLeftDrag)
@@ -224,17 +226,19 @@ export default function MapControls() {
         <button type="button" className={btn} onClick={() => request({ kind: 'house' })} title={t('Whole home (F)')}>
           <House size={16} />
         </button>
-        {/* Roof: hide / show with one click (scene/roof.ts > toggleRoof); Automatic is in the floor menu */}
-        <button
-          type="button"
-          id="roof-toggle"
-          className={`${btn} ${roof === 'off' ? 'text-ink-3' : 'text-brand'}`}
-          onClick={() => toggleRoof()}
-          title={roof === 'off' ? t('Roof removed. Click to bring it back (visible from afar, lifts as you come closer) (T)') : t('Remove the roof completely (T)')}
-          aria-pressed={roof !== 'off'}
-        >
-          <Warehouse size={16} />
-        </button>
+        {/* Roof: hide / show with one click (scene/roof.ts > toggleRoof); Automatic is in the floor menu. Apartment mode has no roof. */}
+        {!apartment && (
+          <button
+            type="button"
+            id="roof-toggle"
+            className={`${btn} ${roof === 'off' ? 'text-ink-3' : 'text-brand'}`}
+            onClick={() => toggleRoof()}
+            title={roof === 'off' ? t('Roof removed. Click to bring it back (visible from afar, lifts as you come closer) (T)') : t('Remove the roof completely (T)')}
+            aria-pressed={roof !== 'off'}
+          >
+            <Warehouse size={16} />
+          </button>
+        )}
         {/* Room names in view mode (remembered); edit mode always shows them */}
         <button
           type="button"
