@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { BAY } from '@/model/building'
+import { C } from './palette'
 import { rng } from './primitives'
 
 /*
@@ -10,10 +11,11 @@ import { rng } from './primitives'
 
 /** Palette of the theme (generic: red-brown brick warehouse, bluestone, dark metal top floors, a blue-grey bridge) */
 export const LOFT = {
-  brick: '#9a5b45',
-  brickShadow: '#7a4535',
-  mortar: '#a89c8f',
-  stone: '#b3a79b',
+  // The brick colors are the loft look's (kit/palette.ts), so the building's facade and the unit's own brick wall match
+  brick: C.brick,
+  brickShadow: C.brickShadow,
+  mortar: C.stone,
+  stone: C.stone,
   cladding: '#3a3d40',
   frame: '#1c1c1e',
   bridge: '#6f8196',

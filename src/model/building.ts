@@ -1,4 +1,5 @@
 import { rectsOf, WALL_T, type Side } from './geometry'
+import { facadeSides } from './apartment'
 import type { Layout } from './types'
 
 /*
@@ -24,16 +25,14 @@ export const SLAB = 0.35
 const OUT: Record<Side, [number, number]> = { back: [0, -1], front: [0, 1], left: [-1, 0], right: [1, 0] }
 /** Plan direction to the viewer's right when looking out of that facade: out x up */
 const ALONG: Record<Side, [number, number]> = { back: [1, 0], front: [-1, 0], left: [0, -1], right: [0, 1] }
-const SIDES: Side[] = ['back', 'front', 'left', 'right']
 
 /**
- * The side of the plan the apartment's windows face. `Layout.apartment.facade` (a list of sides, owned by the facade
- * setting) names it; the first entry is the one the building and the view are built for. Default: the back (the top of the plan).
+ * The side of the plan the apartment's windows face. `Layout.apartment.facade` (a list of sides, read through `facadeSides`) names it;
+ * the first of those is the one the building and the view are built for. Default: the back (the top of the plan).
  */
 export function facadeSide(layout: Pick<Layout, 'apartment'> | null | undefined): Side {
-  const list = (layout?.apartment as { facade?: Side[] } | undefined)?.facade
-  const first = list?.[0]
-  return first && SIDES.includes(first) ? first : 'back'
+  const first = facadeSides(layout?.apartment)[0]
+  return first ?? 'back'
 }
 
 export interface BuildingPlan {
