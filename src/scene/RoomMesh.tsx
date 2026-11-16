@@ -5,13 +5,14 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { inRoom, isOutdoor, rectBounds, rectsOf, runOpenings, shiftRoom, snap, WALL_CUT_H, WALL_H, WALL_IN, WALL_INNER_H, WALL_T, wallRuns, type Opening, type Side, type WallRun } from '@/model/geometry'
 import { useHa } from '@/ha/store'
 import { t } from '@/i18n'
-import { activeLevel, FLOOR_H, useLayout } from '@/model/layoutStore'
+import { activeLevel, FLOOR_H, useApartment, useLayout } from '@/model/layoutStore'
 import { usePlacement } from '@/model/placement'
 import { magnetRoom, overlapsRoom } from '@/model/rules'
 import type { FloorMaterial, Level, Rect, Room } from '@/model/types'
 import { cameraApi, cameraKey, DRAG_PX, roofView, useView } from './camera'
 import { markShadows } from './frame'
 import { useAmbient } from './kit/effects'
+import { facadeBox, facadeMats, loftWallMat, stoneMat } from './kit/loft'
 import { C } from './kit/palette'
 import { mat, rng } from './kit/primitives'
 import { floorTexture, waterGlintTexture } from './kit/textures'
@@ -72,9 +73,13 @@ const WALL_EVENTS = { onPointerDown: stopAtWall, onPointerMove: stopAtWall, onPo
 /**
  * Wall height: all low in the plan view; an interior wall, depending on the setting, full height (not cut while the camera
  * turns, hides what is behind; default) or low (floor plan); an exterior wall is cut when facing the camera, else full.
+ * Apartment mode (apt, Layout.apartment): warm white walls; brick (facade, kit/loft.ts) on the outside face of the building's
+ * facade walls, with a thin stone coping along their top.
  */
-function Wall({ run, interior, plan, innerFull, still, fps }: { run: RunData; interior: boolean; plan: boolean; innerFull: boolean; still?: boolean; fps?: boolean }) {
+const CAP_H = 0.06
+function Wall({ run, interior, plan, innerFull, still, fps, apt, facade }: { run: RunData; interior: boolean; plan: boolean; innerFull: boolean; still?: boolean; fps?: boolean; apt?: boolean; facade?: boolean }) {
   const refs = useRef<(THREE.Mesh | null)[]>([])
+  const caps = useRef<(THREE.Mesh | null)[]>([])
   const h = useRef(WALL_H)
   const { horizontal, side, line, a0, a1, cx, cz, openings } = run
   // The wall is centered on the room boundary: an exterior wall has full thickness (half of it outside), a shared interior
@@ -119,9 +124,18 @@ function Wall({ run, interior, plan, innerFull, still, fps }: { run: RunData; in
       m.visible = top - p.y0 > 0.005
       m.scale.y = Math.max(0.001, top - p.y0)
       m.position.y = (p.y0 + top) / 2
+      // The coping rides on the wall top (1 cm above it, so the two top faces never fight)
+      const cap = caps.current[i]
+      if (cap) {
+        cap.visible = m.visible
+        cap.position.y = top - CAP_H / 2 + 0.01
+      }
     })
   })
 
+  // Apartment mode: warm white walls, brick on the facade's outer face; a house keeps its own material (byte-identical)
+  const geometry = apt && facade ? facadeBox(side) : unitBox
+  const material = !apt ? (fps ? wallFpsMat : mat(C.wall)) : facade ? facadeMats(Boolean(fps)) : loftWallMat(Boolean(fps))
   return (
     <group>
       {parts.map((p, i) => {
@@ -133,16 +147,40 @@ function Wall({ run, interior, plan, innerFull, still, fps }: { run: RunData; in
             ref={(m) => {
               refs.current[i] = m
             }}
-            geometry={unitBox}
-            material={fps ? wallFpsMat : mat(C.wall)}
+            geometry={geometry}
+            material={material}
             position={horizontal ? [mid, (p.y0 + p.y1) / 2, fixed] : [fixed, (p.y0 + p.y1) / 2, mid]}
             scale={horizontal ? [len, p.y1 - p.y0, thick] : [thick, p.y1 - p.y0, len]}
+            userData={{ wall: { side, interior } }}
             castShadow
             receiveShadow
             {...(still ? {} : WALL_EVENTS)}
           />
         )
       })}
+      {apt &&
+        facade &&
+        parts.map((p, i) => {
+          if (p.y1 < WALL_H) return null
+          const mid = (p.a0 + p.a1) / 2
+          const len = p.a1 - p.a0
+          // Proud of the wall by 3 cm outside and 1 cm inside
+          const at = fixed + OUT[side] * 0.01
+          return (
+            <mesh
+              key={`cap${p.a0.toFixed(3)}-${p.y0}`}
+              ref={(m) => {
+                caps.current[i] = m
+              }}
+              geometry={unitBox}
+              material={stoneMat()}
+              position={horizontal ? [mid, WALL_H - CAP_H / 2 + 0.01, at] : [at, WALL_H - CAP_H / 2 + 0.01, mid]}
+              scale={horizontal ? [len, CAP_H, thick + 0.04] : [thick + 0.04, CAP_H, len]}
+              receiveShadow
+              raycast={noRaycast}
+            />
+          )
+        })}
     </group>
   )
 }
@@ -355,11 +393,12 @@ function subTex(t: THREE.Texture, full: Rect, r: Rect) {
 }
 
 /** Floor slab of a part. Overlapping parts are raised a millimeter each so they do not z-fight. full: the whole part when split by a hole */
-function Floor({ rect, full, floor, index, handlers, still, flow, road }: { rect: Rect; full?: Rect; floor: Room['floor']; index: number; handlers: ThreeElements['mesh']; still: boolean; flow?: 'x' | 'z' | null; road?: RoadTexture | null }) {
+function Floor({ rect, full, floor, index, handlers, still, flow, road, oak }: { rect: Rect; full?: Rect; floor: Room['floor']; index: number; handlers: ThreeElements['mesh']; still: boolean; flow?: 'x' | 'z' | null; road?: RoadTexture | null; oak?: boolean }) {
   // On a road the texture comes from the room's road network canvas (kit/roads.ts): the part samples its own region
+  const variant = oak ? 'oak' : undefined
   const tex = useMemo(
-    () => (road ? roadSub(road, rect) : full ? subTex(floorTexture(floor, full.w, full.d, flow), full, rect) : floorTexture(floor, rect.w, rect.d, flow)),
-    [road, floor, rect, full, flow],
+    () => (road ? roadSub(road, rect) : full ? subTex(floorTexture(floor, full.w, full.d, flow, variant), full, rect) : floorTexture(floor, rect.w, rect.d, flow, variant)),
+    [road, floor, rect, full, flow, variant],
   )
   useEffect(() => () => tex.dispose(), [tex])
   const water = floor === 'water'
@@ -391,6 +430,9 @@ export function RoomMesh({ room, level: fixed, still: stillProp }: { room: Room;
   const plan = useView((s) => s.plan)
   const innerFull = useView((s) => s.innerWalls === 'full')
   const fps = useView((s) => s.fps)
+  // Apartment mode (the loft look): warm white walls, oak floors, a brick facade on the sides the plan names
+  const apt = useApartment()
+  const facade = apt?.facade
   // In first person walk mode indoor rooms get a ceiling; not over the stairs (stairwell)
   const stairwell = useLayout((s) => (fixed ?? activeLevel(s))?.items.some((it) => it.kind === 'stairs' && inRoom(room, it.x, it.z)) ?? false)
   // Stairwells (model/stairwell.ts): the hole that stairs on the floor below open in this room's floor; the hole that
@@ -534,8 +576,8 @@ export function RoomMesh({ room, level: fixed, still: stillProp }: { room: Room;
       {rects.map((r, i) => {
         const pieces = wells.length && !road ? subtractRects(r, wells.map((w) => w.r)) : null
         if (!pieces || (pieces.length === 1 && pieces[0].w === r.w && pieces[0].d === r.d))
-          return <Floor key={i} rect={road?.rects[i] ?? r} floor={room.floor} index={i} handlers={handlers} still={still} flow={flows[i]} road={road} />
-        return pieces.map((p, k) => <Floor key={`${i}-${k}`} rect={p} full={r} floor={room.floor} index={i} handlers={handlers} still={still} flow={flows[i]} road={null} />)
+          return <Floor key={i} rect={road?.rects[i] ?? r} floor={room.floor} index={i} handlers={handlers} still={still} flow={flows[i]} road={road} oak={Boolean(apt)} />
+        return pieces.map((p, k) => <Floor key={`${i}-${k}`} rect={p} full={r} floor={room.floor} index={i} handlers={handlers} still={still} flow={flows[i]} road={null} oak={Boolean(apt)} />)
       })}
       {/* Stairwell railing (except the arrival end and edges along a wall) */}
       {wells
@@ -545,7 +587,19 @@ export function RoomMesh({ room, level: fixed, still: stillProp }: { room: Room;
         ))}
       {edging && edgeRuns.length > 0 && <GroundEdging runs={edgeRuns} floor={edging} />}
       {!outdoor &&
-        runs.map((r) => <Wall key={`${r.side}${r.line.toFixed(3)}${r.a0.toFixed(3)}`} run={r} interior={r.interior} plan={plan} innerFull={innerFull} still={still} fps={fps && !still} />)}
+        runs.map((r) => (
+          <Wall
+            key={`${r.side}${r.line.toFixed(3)}${r.a0.toFixed(3)}`}
+            run={r}
+            interior={r.interior}
+            plan={plan}
+            innerFull={innerFull}
+            still={still}
+            fps={fps && !still}
+            apt={Boolean(apt)}
+            facade={Boolean(facade?.includes(r.side)) && !r.interior}
+          />
+        ))}
       {stacked &&
         !outdoor &&
         runs
@@ -555,11 +609,12 @@ export function RoomMesh({ room, level: fixed, still: stillProp }: { room: Room;
             const a1 = r.a1 + WALL_IN
             const mid = (a0 + a1) / 2
             const band = FLOOR_H - WALL_H + 0.01
+            const brick = Boolean(apt) && Boolean(facade?.includes(r.side))
             return (
               <mesh
                 key={`b${r.side}${r.line.toFixed(3)}${r.a0.toFixed(3)}`}
-                geometry={unitBox}
-                material={mat(C.wall)}
+                geometry={brick ? facadeBox(r.side) : unitBox}
+                material={!apt ? mat(C.wall) : brick ? facadeMats(false) : loftWallMat(false)}
                 position={r.horizontal ? [mid, -band / 2 + 0.005, r.line] : [r.line, -band / 2 + 0.005, mid]}
                 scale={r.horizontal ? [a1 - a0, band, WALL_T] : [WALL_T, band, a1 - a0]}
                 castShadow

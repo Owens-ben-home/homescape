@@ -307,5 +307,5 @@ export function itemStateLabel(item: Item, entity: HassEntity) {
 export function itemName(item: Item, entity?: HassEntity) {
   if (item.name) return item.name
   if (entity && CATALOG[item.kind].domains.includes(domainOf(entity.entity_id))) return friendlyName(entity)
-  return CATALOG[item.kind].label
+  return CATALOG[item.kind]?.label ?? item.kind
 }

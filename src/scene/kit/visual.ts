@@ -58,6 +58,8 @@ export interface ItemOpts {
   beam?: number
   /** Built-in sink of a kitchen counter: its center on the counter's local x (omitted when there is none; model/counter.ts) */
   sinkAt?: number
+  /** Window frame, already resolved (Item.frame, else steel in an apartment); a window without it is drawn white */
+  frame?: 'white' | 'steel'
 }
 
 /**

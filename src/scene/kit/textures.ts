@@ -29,12 +29,48 @@ function base(key: string, draw: (g: CanvasRenderingContext2D, size: number) => 
 /**
  * Floor texture; returns a copy with its repeat set for the room size. flow: traffic direction of a road (from the road
  * pieces it connects to, computed by RoomMesh); without it the road runs along the long side of the area.
+ * variant 'oak' (apartment mode, wood only): light oak strips; it has its own cache entry, so the plain wood is untouched.
  */
-export function floorTexture(kind: FloorMaterial, w: number, d: number, flow?: 'x' | 'z' | null) {
+export function floorTexture(kind: FloorMaterial, w: number, d: number, flow?: 'x' | 'z' | null, variant?: 'oak') {
   // Road, crosswalk and parking markings follow the area's orientation (below, markedFloor)
   if (kind === 'road' || kind === 'crosswalk' || kind === 'parking') return markedFloor(kind, w, d, flow ?? null)
-  const src = base(`floor-${kind}`, (g, s) => {
-    if (kind === 'wood') {
+  const oak = kind === 'wood' && variant === 'oak'
+  const src = base(oak ? 'floor-wood-oak' : `floor-${kind}`, (g, s) => {
+    if (oak) {
+      // Light oak strip floor: 12 strips per tile (about 13 cm), a tone of its own each, staggered end joints, faint grain
+      let seed = 11
+      const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280
+      g.fillStyle = C.oak
+      g.fillRect(0, 0, s, s)
+      const n = 12
+      const h = s / n
+      for (let i = 0; i < n; i++) {
+        const y = i * h
+        const tone = rnd() - 0.5
+        g.fillStyle = tone > 0 ? `rgba(255, 244, 220, ${tone * 0.22})` : `rgba(120, 78, 30, ${-tone * 0.2})`
+        g.fillRect(0, y, s, h)
+        g.strokeStyle = 'rgba(120, 78, 30, 0.18)'
+        g.lineWidth = 0.8
+        for (let k = 0; k < 3; k++) {
+          const gy = y + 3 + rnd() * (h - 6)
+          g.beginPath()
+          g.moveTo(0, gy)
+          g.lineTo(s, gy + (rnd() - 0.5) * 3)
+          g.stroke()
+        }
+        g.strokeStyle = C.oakLine
+        g.lineWidth = 1.6
+        g.beginPath()
+        g.moveTo(0, y + 0.8)
+        g.lineTo(s, y + 0.8)
+        g.stroke()
+        const seam = ((i * 89 + 31) % s) + 0.5
+        g.beginPath()
+        g.moveTo(seam, y)
+        g.lineTo(seam, y + h)
+        g.stroke()
+      }
+    } else if (kind === 'wood') {
       g.fillStyle = C.woodFloor
       g.fillRect(0, 0, s, s)
       g.strokeStyle = C.woodLine
@@ -464,6 +500,59 @@ export function woodGrainTexture() {
           else g.lineTo(x, y)
         }
         g.stroke()
+      }
+    },
+    512,
+  )
+}
+
+/**
+ * Brick facade: running bond (every second course shifted by half a brick) in warm red-brown with a tone of its own per brick
+ * and light mortar joints. The tile covers BRICK_TILE metres both ways (16 courses of 7 cm, 5 bricks of 22.4 cm), so a wall
+ * maps it by WORLD position (kit/loft.ts) and openings and the animated wall height never stretch the bricks. Colors are in
+ * the texture, the material stays white. Seeded: the same every time.
+ */
+export const BRICK_TILE = 1.12
+export function brickTexture() {
+  return base(
+    'brick',
+    (g, s) => {
+      let seed = 5
+      const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280
+      const courses = 16
+      const perRow = 5
+      const ch = s / courses
+      const bw = s / perRow
+      const joint = Math.max(2, s * (0.012 / BRICK_TILE))
+      g.fillStyle = C.stone
+      g.fillRect(0, 0, s, s)
+      const dark = new THREE.Color(C.brickShadow)
+      const light = new THREE.Color(C.brick)
+      const col = new THREE.Color()
+      for (let r = 0; r < courses; r++) {
+        const shift = r % 2 ? bw / 2 : 0
+        for (let k = -1; k <= perRow; k++) {
+          const x = k * bw + shift
+          const y = r * ch
+          col.copy(light).lerp(dark, rnd() * 0.5)
+          col.offsetHSL(0, (rnd() - 0.5) * 0.04, (rnd() - 0.5) * 0.04)
+          for (const ox of [-s, 0, s]) {
+            const bx = x + ox + joint / 2
+            if (bx > s || bx + bw < 0) continue
+            g.fillStyle = `#${col.getHexString()}`
+            g.fillRect(bx, y + joint / 2, bw - joint, ch - joint)
+            // a darker lower edge and a faint lit upper edge give the bricks a little relief
+            g.fillStyle = 'rgba(60, 28, 18, 0.22)'
+            g.fillRect(bx, y + ch - joint / 2 - 2.5, bw - joint, 2.5)
+            g.fillStyle = 'rgba(255, 220, 190, 0.08)'
+            g.fillRect(bx, y + joint / 2, bw - joint, 1.5)
+          }
+        }
+      }
+      // fine speckle over everything
+      for (let i = 0; i < 1400; i++) {
+        g.fillStyle = rnd() > 0.5 ? 'rgba(50, 24, 16, 0.07)' : 'rgba(255, 225, 200, 0.06)'
+        g.fillRect(rnd() * s, rnd() * s, 1.5, 1.5)
       }
     },
     512,

@@ -9,6 +9,7 @@ import * as O from './outdoor'
 import * as Pt from './pets'
 import * as S from './smart'
 import * as St from './street'
+import * as Tm from './timber'
 import type { Visual } from './visual'
 
 /** Item kind → 3D component. A new kind needs types.ts, catalog.ts, this map (and generate.ts if needed). */
@@ -158,6 +159,9 @@ export const KIT: Record<ItemKind, ComponentType<{ v: Visual }>> = {
   toolWall: O.ToolWall,
   storageRack: O.StorageRack,
   stairs: O.Stairs,
+  // Timber structure of a loft; models in kit/timber.tsx
+  column: Tm.Column,
+  beam: Tm.Beam,
   garageDoor: O.GarageDoor,
   // Front yard and street; models in kit/street.tsx
   streetLamp: St.StreetLamp,

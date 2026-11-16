@@ -65,7 +65,7 @@ export function presetRects(p: RoomPreset, rot: number): Rect[] {
 }
 
 export type PlaceTarget =
-  | { type: 'item'; kind: ItemKind; entityId?: string | null; preset?: string; extra?: Partial<Pick<Item, 'len' | 'len2' | 'y' | 'variant' | 'name' | 'mount'>> }
+  | { type: 'item'; kind: ItemKind; entityId?: string | null; preset?: string; extra?: Partial<Pick<Item, 'len' | 'len2' | 'y' | 'variant' | 'name' | 'mount' | 'frame'>> }
   | { type: 'room'; preset: RoomPreset }
 
 interface PlacementState {

@@ -49,9 +49,13 @@ interface Window {
     /** Ray in the scene: height, distance and item of the first visible hit (dev/sceneProbe.ts) */
     pick: (x: number, y: number, z: number, dx: number, dy: number, dz: number) => Promise<{ y: number; distance: number; itemId: string | null } | null>
     /** Apartment mode (Layout.apartment): given { floor } or null it calls setApartment first; returns the current setting (null for a house) */
-    apartment: (next?: { floor: number } | null) => { floor: number } | null
+    apartment: (next?: { floor: number; facade?: import('@/model/geometry').Side[] } | null) => { floor: number; facade?: import('@/model/geometry').Side[] } | null
     /** Roof groups in the scene (drawn or not) and the ground plane's world height (dev/sceneProbe.ts > structure) */
     sceneStructure: () => Promise<{ roofs: number; ground: number | null } | null>
+    /** Loft look (dev/sceneProbe.ts > loft): the wall kinds in the scene with the look of their faces, and the frame of every window */
+    loft: () => Promise<{ walls: { side: string; interior: boolean; inside: string; outside: string }[]; windows: { itemId: string | null; frame: string }[] } | null>
+    /** Collision boxes of the active floor in the walk (fps.ts > buildColliders): floor items only */
+    colliders: () => Promise<{ minX: number; maxX: number; minZ: number; maxZ: number }[]>
     /** The item's group in the scene: its id (changes when rebuilt), world height, visible or not */
     itemObject: (id: string) => Promise<{ uuid: string; y: number; visible: boolean } | null>
     /** Open state of cabinets (scene/bins.ts): cabinet id -> open */

@@ -39,7 +39,7 @@ function anchorFor(id: string, out: THREE.Vector3) {
     if (!it) return false
     // labelY in the catalog is relative to the default height; shift it when the item is raised (e.g. on a table).
     const base = DEFAULT_Y[it.kind] ?? 0
-    out.set(it.x, it.y != null ? it.y + CATALOG[it.kind].labelY - base : CATALOG[it.kind].labelY, it.z)
+    out.set(it.x, it.y != null ? it.y + (CATALOG[it.kind]?.labelY ?? 1) - base : (CATALOG[it.kind]?.labelY ?? 1), it.z)
     return true
   }
   return false

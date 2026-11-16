@@ -12,6 +12,7 @@ import { t } from '@/i18n'
 import { isBound } from '@/model/bindings'
 import { CATALOG, isLightKind, sizeOf } from '@/model/catalog'
 import { doorSides, isAperture, isOutdoor, snap, wallSnap } from '@/model/geometry'
+import { frameOf } from '@/model/apartment'
 import { activeLevel, useLayout } from '@/model/layoutStore'
 import { usePlacement } from '@/model/placement'
 import { APPLIANCE_STACK, checkItem, isWallMounted, snapsToWall, STACKABLE, surfaceAt } from '@/model/rules'
@@ -92,9 +93,11 @@ function ItemNodeImpl({ item, entity, related, night, levelId, still = false }: 
   const { len, drawers, top, body, fedAt, shape, variant, len2, led, ledEntity, intensity, mount, beam } = item
   // Built-in sink of the kitchen counter (model/counter.ts): in the middle unless there is a separate sink next to it
   const sinkAt = useLayout((s) => (item.kind === 'kitchenCounter' ? (counterSink(lvOf(s)?.items ?? [], item) ?? undefined) : undefined))
+  // Window frame: its own choice, else black steel in an apartment (only windows follow the apartment setting)
+  const frame = useLayout((s) => (item.kind === 'window' ? frameOf(item.frame, Boolean(s.layout?.apartment)) : undefined))
   const opts = useMemo(
-    () => ({ len, drawers, top, body, fedAt, shape, variant, len2, led, ledEntity, intensity, mount, beam, sinkAt }),
-    [len, drawers, top, body, fedAt, shape, variant, len2, led, ledEntity, intensity, mount, beam, sinkAt],
+    () => ({ len, drawers, top, body, fedAt, shape, variant, len2, led, ledEntity, intensity, mount, beam, sinkAt, frame }),
+    [len, drawers, top, body, fedAt, shape, variant, len2, led, ledEntity, intensity, mount, beam, sinkAt, frame],
   )
   useCursor(hover && interactive && !busy())
   // If the quick on/off pill opens on this item, it is placed by this group's body (scene/QuickAnchor.tsx)
@@ -177,7 +180,8 @@ function ItemNodeImpl({ item, entity, related, night, levelId, still = false }: 
 
   const y = item.y ?? DEFAULT_Y[item.kind] ?? 0
   // The model is not re-rendered unless its look changes (selection, hover and floor change only update this node)
-  const model = useMemo(() => <Comp v={v} />, [Comp, v])
+  // A kind this build does not know (a plan saved by a newer build) is not drawn instead of crashing the scene
+  const model = useMemo(() => (Comp ? <Comp v={v} /> : null), [Comp, v])
 
   /*
    * In view mode pressing does nothing (the camera pans, a click selects).

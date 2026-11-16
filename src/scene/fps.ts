@@ -32,9 +32,9 @@ export interface Seg {
 /**
  * Floor items you can walk through: rugs, stairs (you climb them), roaming and very small items; flat items on the road
  * (manhole, speed bump, stepping stones); cats and dogs (the item position is only their home, the animal roams:
- * scene/Pets.tsx).
+ * scene/Pets.tsx). A timber beam is overhead (you walk under it); a timber column is solid and is not here.
  */
-const WALKABLE: string[] = ['rug', 'doormat', 'stairs', 'robotVacuum', 'lawnMower', 'leakSensor', 'sprinkler', 'door', 'window', 'garageDoor', 'stringLights', 'parasol', 'gardenLight', 'plant', 'steppingStones', 'manhole', 'speedBump', 'cat', 'dog', 'petToy']
+const WALKABLE: string[] = ['beam', 'rug', 'doormat', 'stairs', 'robotVacuum', 'lawnMower', 'leakSensor', 'sprinkler', 'door', 'window', 'garageDoor', 'stringLights', 'parasol', 'gardenLight', 'plant', 'steppingStones', 'manhole', 'speedBump', 'cat', 'dog', 'petToy']
 
 /**
  * Collision geometry of a floor: walls of indoor rooms (door openings are gaps), balcony and terrace railings, footprints

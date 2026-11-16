@@ -13,6 +13,7 @@ import { useView } from '../camera'
 import { doorKey, useDoorTraffic } from '../doorTraffic'
 import { markShadows } from '../frame'
 import { Airflow, Glow, Mist, MusicNotes, Ripple, Spin, StripGlow, useAmbient, useEased, useLitMaterial, Wash } from './effects'
+import { oakSillMat, steelFrameGeo, steelGridGeo, steelMat, STEEL_FRAME_Z } from './loft'
 import { C } from './palette'
 import { bandGlowTexture, glowTexture, siriTexture, softRectTexture, woodGrainTexture } from './textures'
 import { Ball, Box, Cyl, mat } from './primitives'
@@ -1568,10 +1569,15 @@ export function Window({ v }: P) {
   const B = WINDOW_BOTTOM
   const T = B + H
   const yoff = v.at?.y ?? 0
-  const gw = W - 0.06
-  const gh = H - 0.06
+  // Loft look (Item.frame 'steel', the default in an apartment): a thin black steel frame set toward the outside of the wall,
+  // a mullion grid in the sash, a deep white reveal (the wall's own cut faces) and a light oak sill. 'white': the plain window.
+  const steel = v.opts.frame === 'steel'
+  const gw = W - (steel ? 0.08 : 0.06)
+  const gh = H - (steel ? 0.08 : 0.06)
   // The sash opens into the room by default (negative rotation toward local +z, into the room); only with a window sensor.
   const sash = useEased(sashOpen(v) ? -0.5 : 0)
+  // A steel sash sits in the frame: a window that swings out is mirrored about the wall line, so it starts on the other side
+  const sashZ = steel ? (v.swingOut ? 2 * EDGE_Z - STEEL_FRAME_Z : STEEL_FRAME_Z) : EDGE_Z + 0.04
   // With a low wall the window is hidden; a thin glass line on top of the low wall stands in for it (floor plan mark).
   useWallHeight(root, v.interior, (h) => {
     const low = h < 1.2
@@ -1586,19 +1592,30 @@ export function Window({ v }: P) {
   const glass = fps ? mat(C.glass, { opacity: 0.12, roughness: 0.05 }) : mat(C.glass, { emissive: '#9fc8ff', emissiveIntensity: 0.25, roughness: 0.2 })
   return (
     <group ref={root}>
-      <group ref={full}>
+      <group ref={full} userData={{ windowFrame: steel ? 'steel' : 'white' }}>
         {/* frame: around the opening, inside the wall */}
-        <Box size={[W + 0.04, 0.06, 0.22]} position={[0, B, EDGE_Z]} color={C.white} />
-        <Box size={[W + 0.04, 0.06, 0.22]} position={[0, T, EDGE_Z]} color={C.white} />
-        <Box size={[0.06, H, 0.22]} position={[-W / 2, B + H / 2, EDGE_Z]} color={C.white} />
-        <Box size={[0.06, H, 0.22]} position={[W / 2, B + H / 2, EDGE_Z]} color={C.white} />
+        {steel ? (
+          <mesh geometry={steelFrameGeo(W, H, B)} material={steelMat()} receiveShadow />
+        ) : (
+          <>
+            <Box size={[W + 0.04, 0.06, 0.22]} position={[0, B, EDGE_Z]} color={C.white} />
+            <Box size={[W + 0.04, 0.06, 0.22]} position={[0, T, EDGE_Z]} color={C.white} />
+            <Box size={[0.06, H, 0.22]} position={[-W / 2, B + H / 2, EDGE_Z]} color={C.white} />
+            <Box size={[0.06, H, 0.22]} position={[W / 2, B + H / 2, EDGE_Z]} color={C.white} />
+          </>
+        )}
         <Mirror x={v.hingeRight} z={v.swingOut}>
-          <group ref={sash} position={[-gw / 2, 0, EDGE_Z + 0.04]}>
+          <group ref={sash} position={[-gw / 2, 0, sashZ]}>
             <Box size={[gw, gh, 0.025]} position={[gw / 2, B + H / 2, 0]} material={glass} shadow={false} />
-            <Box size={[0.03, gh, 0.035]} position={[gw / 2, B + H / 2, 0]} color={C.white} shadow={false} />
+            {steel ? <mesh geometry={steelGridGeo(gw, gh, B, H)} material={steelMat()} /> : <Box size={[0.03, gh, 0.035]} position={[gw / 2, B + H / 2, 0]} color={C.white} shadow={false} />}
           </group>
         </Mirror>
-        {B + yoff > 0.3 && <Box size={[W + 0.3, 0.04, 0.2]} position={[0, B - 0.03, EDGE_Z + WALL_IN + 0.1]} color={C.white} />}
+        {B + yoff > 0.3 &&
+          (steel ? (
+            <Box size={[W + 0.12, 0.05, 0.27]} position={[0, B, EDGE_Z + 0.115]} material={oakSillMat()} />
+          ) : (
+            <Box size={[W + 0.3, 0.04, 0.2]} position={[0, B - 0.03, EDGE_Z + WALL_IN + 0.1]} color={C.white} />
+          ))}
         <Shade v={v} W={W} B={B} T={T} yoff={yoff} />
       </group>
       {/* Sash swing direction in edit mode: outline arc on the floor (visible when the wall is low too) */}

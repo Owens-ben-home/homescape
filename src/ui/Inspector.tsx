@@ -6,7 +6,8 @@ import { useHa } from '@/ha/store'
 import { bindingsOf, boundAnywhere, emitsLight, isBound, ledOf, ledSource } from '@/model/bindings'
 import { BEAM, BODY_COLORS, CATALOG, CONSOLE_LEN, consoleModel, ITEM_PRESETS, OPTIONS, RESIZABLE, RESIZABLE2, sizeOf, TOP_COLORS } from '@/model/catalog'
 import { kindFor, modelName, variantFor } from '@/model/generate'
-import { doorSides, isOutdoor, isStreetSurface, rectsOf, roomArea, roomAt, wallSnap } from '@/model/geometry'
+import { frameOf, SIDES } from '@/model/apartment'
+import { doorSides, isOutdoor, isStreetSurface, rectsOf, roomArea, roomAt, wallSnap, type Side } from '@/model/geometry'
 import { groupFamily, groupMates, heatingSummary } from '@/model/groups'
 import { activeHomeId, activeLevel, homesOf, useApartment, useLayout } from '@/model/layoutStore'
 import { usePlacement } from '@/model/placement'
@@ -206,8 +207,14 @@ function Swatches({ list, value, onPick }: { list: [string, string][]; value?: s
 }
 
 /** Preset window sizes: standard (1.2 m, sill at 0.9 m) or full height (2.1 m, 8 cm above the floor). Checked against the rules. */
+const FRAMES: ['white' | 'steel', () => string][] = [
+  ['white', () => t('White')],
+  ['steel', () => t('Black steel')],
+]
 function WindowPresets({ item }: { item: Item }) {
+  const apartment = useApartment() !== null
   if (item.kind !== 'window') return null
+  const frame = frameOf(item.frame, apartment)
   const full = ITEM_PRESETS.find((p) => p.id === 'windowFull')!.extra
   const presets: [string, Partial<Item>][] = [
     [t('Standard'), { len2: 1.2, y: undefined }],
@@ -232,6 +239,14 @@ function WindowPresets({ item }: { item: Item }) {
         ))}
       </div>
       <span className="text-[11px] text-ink-3">{t('You can also set the width and height with the sliders below.')}</span>
+      <span className="mt-1 text-[12px] font-semibold text-ink-2">{t('Frame')}</span>
+      <div className="flex gap-1.5">
+        {FRAMES.map(([k, label]) => (
+          <button key={k} id={`window-frame-${k}`} type="button" aria-pressed={frame === k} className={seg(frame === k)} onClick={() => useLayout.getState().updateItem(item.id, { frame: k })}>
+            {label()}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
@@ -1259,6 +1274,8 @@ function ApartmentPicker() {
     if (floor != null) setText(String(floor))
   }
   const label = t('Apartment')
+  // The sides of the plan as drawn (the top is -z, where the brick facade is by default)
+  const sideLabel: Record<Side, string> = { back: t('Top'), front: t('Bottom'), left: t('Left'), right: t('Right') }
   return (
     <div className="grid gap-2 rounded-xl border border-line px-3 py-2 text-[12.5px]" title={t('Marks the home as one unit in a larger building: no roof, the street far below, and nobody waiting outside the front door. Floor 1 is street level.')}>
       <div className="flex items-center gap-2">
@@ -1296,6 +1313,28 @@ function ApartmentPicker() {
             className="w-20 rounded-xl border border-line bg-surface px-3 py-1.5 text-right font-mono text-[13px] tabular-nums"
           />
         </label>
+      )}
+      {apartment && (
+        <div className="grid gap-1.5" title={t('Brick shows on the outside of these walls; the other outer walls are shared with neighbours and stay plain.')}>
+          <span className="text-ink-2">{t('Facade side')}</span>
+          <div className="flex gap-1.5" role="group" aria-label={t('Facade side')}>
+            {SIDES.map((side) => {
+              const on = apartment.facade.includes(side)
+              return (
+                <button
+                  key={side}
+                  type="button"
+                  id={`apartment-facade-${side}`}
+                  aria-pressed={on}
+                  className={seg(on)}
+                  onClick={() => setApartment({ floor: apartment.floor, facade: on ? apartment.facade.filter((s) => s !== side) : [...apartment.facade, side] })}
+                >
+                  {sideLabel[side]}
+                </button>
+              )
+            })}
+          </div>
+        </div>
       )}
     </div>
   )

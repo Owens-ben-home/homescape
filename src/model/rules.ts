@@ -135,9 +135,10 @@ const TUCKS: Partial<Record<ItemKind, ItemKind[]>> = { chair: ['diningTable', 'd
 
 /**
  * Ceiling items (ceiling layer: no collision with floor and wall items). The pergola / gazebo is in this layer too, like a
- * roof: a garden table, bench or sun lounger goes under it.
+ * roof: a garden table, bench or sun lounger goes under it. A timber beam is up here too: it spans a room wall to wall (it
+ * may touch the walls) and nothing on the floor collides with it; people, pets and the walk only collide with floor items.
  */
-export const CEILING: ItemKind[] = ['pendant', 'downlight', 'ceilingStrip', 'ceilingFan', 'ceilingLight', 'trackLight', 'projector', 'smokeDetector', 'pergola']
+export const CEILING: ItemKind[] = ['pendant', 'downlight', 'ceilingStrip', 'ceilingFan', 'ceilingLight', 'trackLight', 'projector', 'smokeDetector', 'pergola', 'beam']
 
 export function layerOf(kind: ItemKind, y?: number, variant?: string, mount?: Item['mount']): Layer {
   if (kind === 'rug' || kind === 'doormat') return 'rug'
@@ -314,7 +315,7 @@ export function checkItem(level: Level, cand: Cand, ignoreId?: string, onWall = 
 
   for (const it of level.items) {
     if (it.id === ignoreId) continue
-    const name = it.name || CATALOG[it.kind].label
+    const name = it.name || (CATALOG[it.kind]?.label ?? it.kind)
     if (it.kind === 'ceilingStrip') continue
     if (cand.kind === 'door' || it.kind === 'door') {
       if (FREE_NEAR_DOOR.includes(layerOf(it.kind, it.y, it.variant, it.mount)) || FREE_NEAR_DOOR.includes(layer)) continue

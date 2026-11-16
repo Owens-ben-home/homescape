@@ -1,3 +1,5 @@
+import type { Side } from './geometry'
+
 /*
  * House plan data model. Units are meters; x to the right, z to the front (toward the camera), y up.
  * Rooms are axis-aligned rectangles: (x, z) the back-left corner, w the width (x), d the depth (z).
@@ -51,6 +53,9 @@ export type ItemKind =
   | 'mirrorLight'
   | 'downlight'
   | 'ceilingStrip'
+  // timber structure (kit/timber.tsx)
+  | 'column'
+  | 'beam'
   // devices
   | 'tv'
   | 'console'
@@ -293,6 +298,11 @@ export interface Item {
   /** Beam angle of a downlight (degrees, full cone; 20-150 on the card, 90 when not given). */
   beam?: number
   /**
+   * Window frame: 'white' (the plain house window) or 'steel' (thin near-black loft frame with a mullion grid). When not given:
+   * 'steel' in an apartment (Layout.apartment), 'white' otherwise (model/apartment.ts > frameOf). `variant` is the shade type.
+   */
+  frame?: 'white' | 'steel'
+  /**
    * Built-in sink and faucet of the kitchen counter: its position, or none. When not given it sits in the middle unless a
    * separate sink stands next to the counter (model/counter.ts).
    */
@@ -344,8 +354,10 @@ export interface Layout {
    * Apartment mode (missing: a house): the home is one unit in a larger building. `floor` is the building floor it is on,
    * counted the US way (1 = street level), so the unit's lowest level sits at elevation `floor - 1`. No roofs, the ground
    * stays at street level far below, nobody waits outside the front door. Helpers: model/apartment.ts, `useApartment`.
+   * `facade`: the sides of the plan (the top of the plan is 'back') where the outline walls are the building's brick
+   * facade; the other outline walls are party walls to neighbouring units and stay plain. Missing: ['back'].
    */
-  apartment?: { floor: number }
+  apartment?: { floor: number; facade?: Side[] }
 }
 
 export type Selection = { type: 'room' | 'item'; id: string } | null

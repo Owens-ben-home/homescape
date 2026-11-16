@@ -136,8 +136,8 @@ const UNDER: Record<Mover, ItemKind[]> = {
   cat: ['diningTable', 'coffeeTable', 'roundTable', 'desk', 'chair', 'gamingChair', 'outdoorTable', 'lounger', 'swing', 'clothesRack', 'workbench'],
   dog: ['diningTable', 'desk', 'outdoorTable', 'swing', 'clothesRack'],
 }
-/** Items that can be walked over or through */
-const PASS: ItemKind[] = ['rug', 'doormat', 'robotVacuum', 'lawnMower', 'leakSensor', 'sprinkler', 'door', 'window', 'garageDoor', 'stringLights', 'gardenLight', 'parasol', 'cat', 'dog', 'petToy', 'stairs']
+/** Items that can be walked over or through (a timber beam is overhead; a timber column is solid, so it is not here) */
+const PASS: ItemKind[] = ['beam', 'rug', 'doormat', 'robotVacuum', 'lawnMower', 'leakSensor', 'sprinkler', 'door', 'window', 'garageDoor', 'stringLights', 'gardenLight', 'parasol', 'cat', 'dog', 'petToy', 'stairs']
 
 /** Area with walls or railings: indoor room, garage, balcony, terrace (not gardens and similar open ground) */
 const solid = (r: Room) => !isOutdoor(r) || r.type === 'balcony' || r.type === 'terrace'

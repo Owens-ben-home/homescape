@@ -79,6 +79,9 @@ export const CATALOG: Record<ItemKind, KindMeta> = {
 
   door: { label: t('Door'), group: 'structure', domains: ['binary_sensor', 'lock', 'cover'], size: [1, 0.2], labelY: 2.4, wall: true },
   window: { label: t('Window'), group: 'structure', domains: ['binary_sensor', 'cover'], size: [1.2, 0.2], labelY: 2.4, wall: true },
+  // Timber structure of a loft (kit/timber.tsx): a post from floor to ceiling and a beam under the ceiling. Decor: nothing to bind.
+  column: { label: t('Column'), group: 'structure', domains: [], size: [0.3, 0.3], labelY: 2.7 },
+  beam: { label: t('Beam'), group: 'structure', domains: [], size: [2, 0.25], labelY: 2.75 },
 
   sofa: { label: t('Sofa'), group: 'furniture', domains: [], size: [2.2, 0.9], labelY: 1.1 },
   armchair: { label: t('Armchair'), group: 'furniture', domains: [], size: [0.9, 0.85], labelY: 1.1 },
@@ -864,6 +867,7 @@ export const RESIZABLE: Partial<Record<ItemKind, { min: number; max: number; lab
   kitchenCounter: { min: 0.6, max: 4, label: t('Counter length') },
   tvUnit: { min: 0.8, max: 3.2, label: t('Unit length') },
   window: { min: 0.5, max: 3, label: t('Window width') },
+  beam: { min: 0.5, max: 8, label: t('Beam length') },
   rug: { min: 0.5, max: 5, label: t('Rug width') },
   doormat: { min: 0.4, max: 3, label: t('Doormat width') },
   ceilingFan: { min: 0.8, max: 1.6, label: t('Blade span') },
@@ -899,10 +903,12 @@ export interface ItemPreset {
   kind: ItemKind
   label: string
   sub: string
-  extra: Partial<Pick<Item, 'len' | 'len2' | 'y' | 'variant' | 'mount'>>
+  extra: Partial<Pick<Item, 'len' | 'len2' | 'y' | 'variant' | 'mount' | 'frame'>>
 }
 export const ITEM_PRESETS: ItemPreset[] = [
   { id: 'windowFull', kind: 'window', label: t('Full-height window'), sub: `${formatNumber(1.2)} × ${formatNumber(2.1)} m`, extra: { len2: 2.1, y: -0.82 } },
+  // The loft window: tall and black steel, whatever the home (the plain card follows the apartment setting)
+  { id: 'windowLoft', kind: 'window', label: t('Loft window'), sub: `${formatNumber(1.2)} × ${formatNumber(2.1)} m`, extra: { len2: 2.1, y: -0.82, frame: 'steel' } },
   // The power strip can hang on the wall too
   { id: 'powerStripWall', kind: 'powerStrip', label: t('Wall power strip'), sub: t('wall mounted · 2-8 outlets'), extra: { mount: 'wall' } },
   // Rug shapes; all the same kind, the card changes shape and size
@@ -917,7 +923,8 @@ export const windowSize = (it: { len?: number; len2?: number }) => ({ w: it.len 
 
 /** The item's real footprint: the adjusted length if there is one. */
 export function sizeOf(kind: ItemKind, len?: number, len2?: number): [number, number] {
-  const [w, d] = CATALOG[kind].size
+  // A kind this build does not know (a plan from a newer build) gets a small footprint instead of a crash
+  const [w, d] = CATALOG[kind]?.size ?? [0.3, 0.3]
   // The second size only for kinds that use it as depth (ceiling strip, rug); the L arm of a counter is computed separately.
   if (kind === 'ceilingStrip' || kind === 'rug' || kind === 'doormat' || kind === 'pool') return [len ?? w, len2 ?? d]
   // A ceiling fan is round: the blade span in both directions

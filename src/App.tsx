@@ -525,6 +525,9 @@ export default function App() {
         return useLayout.getState().layout?.apartment ?? null
       },
       sceneStructure: () => import('@/dev/sceneProbe').then((m) => m.structure()),
+      // Loft look: wall kinds with the look of their faces, window frames (dev/sceneProbe.ts > loft); the walk's collision boxes of the active floor
+      loft: () => import('@/dev/sceneProbe').then((m) => m.loft()),
+      colliders: () => import('@/scene/fps').then((m) => m.buildColliders(activeLevel(useLayout.getState())!).boxes),
       sound: () => import('@/audio/engine').then((m) => m.soundDebug()),
       soundUnlock: () => import('@/audio/engine').then((m) => m.unlock()),
       soundNight: () => import('@/audio/ambienceState').then((m) => m.ambienceDebug.callNow()),

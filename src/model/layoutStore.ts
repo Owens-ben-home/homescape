@@ -3,9 +3,9 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { floorNumber, t } from '@/i18n'
 import { asMain, foldTvBacklights, isBound, primaryFirst, withBinding, withoutBinding } from './bindings'
-import { clampFloor, shiftLevels } from './apartment'
+import { clampFloor, facadeSides, shiftLevels } from './apartment'
 import { connectRooms } from './doors'
-import { areaContents, inRoom, rectsOf, settleWallItems, shiftRoom } from './geometry'
+import { areaContents, inRoom, rectsOf, settleWallItems, shiftRoom, type Side } from './geometry'
 import { dropLoneGroups, groupMates } from './groups'
 import { splitTvUnits } from './migrate'
 import { isDefault as isDefaultDashboard } from './dashboardLayout'
@@ -208,8 +208,9 @@ interface LayoutState {
   /**
    * Apartment mode (Layout.apartment): `{ floor }` puts the home on that building floor (1 to 120, 1 = street level) and shifts
    * every level so the lowest sits at elevation floor - 1; null turns it off and shifts them back so the lowest is 0. Undoable.
+   * `facade` (the sides with the brick facade, see Layout.apartment) is kept when not given; a given list replaces it.
    */
-  setApartment: (next: { floor: number } | null) => void
+  setApartment: (next: { floor: number; facade?: Side[] } | null) => void
   /** Deletes a level with everything on it (not the last one). */
   deleteLevel: (id: string) => void
 }
@@ -248,10 +249,14 @@ function moveLevels(levels: Level[], lowest: number): Level[] {
   return shifted === levels ? levels : shifted.map((l, i) => (unnamedLevel(l) ? { ...l, name: levelName(levels[i]) } : l))
 }
 
-/** The apartment settings of the active home (null: a house). The selector returns a number, so it never re-renders for nothing. */
-export function useApartment(): { floor: number } | null {
+/**
+ * The apartment settings of the active home (null: a house). `facade` is always a list (the default when the plan has none).
+ * The selectors return a number and a string, so it never re-renders for nothing.
+ */
+export function useApartment(): { floor: number; facade: Side[] } | null {
   const floor = useLayout((s) => (s.layout?.apartment ? clampFloor(s.layout.apartment.floor) : 0))
-  return useMemo(() => (floor ? { floor } : null), [floor])
+  const facade = useLayout((s) => (s.layout?.apartment ? facadeSides(s.layout.apartment).join(',') : ''))
+  return useMemo(() => (floor ? { floor, facade: (facade ? facade.split(',') : []) as Side[] } : null), [floor, facade])
 }
 
 function mapLevel(layout: Layout, levelId: string | null, fn: (l: Level) => Level): Layout {
@@ -598,8 +603,10 @@ export const useLayout = create<LayoutState>()(
             return
           }
           const floor = clampFloor(next.floor)
-          if (was?.floor === floor) return
-          set({ layout: { ...rest, levels: moveLevels(layout.levels, floor - 1), apartment: { floor } }, past: [...past, layout].slice(-HISTORY), future: [] })
+          // Only a given facade changes it (the floor field sends just the floor)
+          const facade = next.facade ? facadeSides({ facade: next.facade }) : was?.facade
+          if (was?.floor === floor && JSON.stringify(was.facade) === JSON.stringify(facade)) return
+          set({ layout: { ...rest, levels: moveLevels(layout.levels, floor - 1), apartment: { floor, ...(facade ? { facade } : {}) } }, past: [...past, layout].slice(-HISTORY), future: [] })
         },
         deleteLevel: (id) => {
           const { layout, past, levelId } = get()
