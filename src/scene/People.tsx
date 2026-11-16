@@ -276,7 +276,11 @@ function PersonHit({ slot, walkers, hits }: { slot: number; walkers: React.RefOb
     () =>
       function (this: THREE.Mesh, rc: THREE.Raycaster, out: THREE.Intersection[]) {
         const w = walkers.current?.[slot]
-        if (w?.who && !w.exit) THREE.Mesh.prototype.raycast.call(this, rc, out)
+        if (!w?.who || w.exit) return
+        // A person on a sofa or at a desk sits inside that item's own hit area: the capsule must come first in the event order
+        const n = out.length
+        THREE.Mesh.prototype.raycast.call(this, rc, out)
+        for (let k = n; k < out.length; k++) out[k].distance -= 50
       },
     [slot, walkers],
   )
