@@ -29,6 +29,7 @@ import { FpsControls } from './FpsControls'
 import { ACTIVE_LEVEL, useFps } from './fps'
 import { People } from './People'
 import { Pets } from './Pets'
+import { PresenceRing } from './PresenceRing'
 import { StreetLife } from './StreetLife'
 import { computeRoomLights, setRoomLights } from './roomLights'
 import { RoomMesh } from './RoomMesh'
@@ -582,6 +583,7 @@ function Contents() {
       <AlarmFlash />
       <People />
       <Pets />
+      <PresenceRing />
       <StreetLife />
       <SoundScape />
       <Ground night={night} y={groundY} apartment={Boolean(apartment)} />

@@ -39,6 +39,8 @@ export interface HumanRefs {
   blanket: THREE.Object3D
   zzz: THREE.Object3D
   shadow: THREE.Object3D
+  /** Materials of the body and the blanket when the character has its own (presence fades them); absent: the shared one */
+  mats?: THREE.Material[]
 }
 
 /** Thigh length (hip joint to knee) and knee to sole: leg angles of the sitting pose (humanModel > LEG). */

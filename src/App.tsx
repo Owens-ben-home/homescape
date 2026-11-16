@@ -514,6 +514,7 @@ export default function App() {
       fakeLive: () => import('@/dev/fakeLive').then((m) => m.fakeLive()),
       doorTraffic: () => import('@/scene/doorTraffic').then((m) => Object.keys(m.useDoorTraffic.getState().open)),
       fakeLiveCalls: () => import('@/dev/fakeLive').then((m) => [...m.fakeCalls]),
+      fakeLiveSet: (e) => import('@/dev/fakeLive').then((m) => m.fakeLiveSet(e)),
       sync: () => import('@/ha/planSync').then((m) => JSON.parse(JSON.stringify(m.syncDebug()))),
       fakeUser: (patch) => import('@/dev/fakeLive').then((m) => void Object.assign(m.fakeUserData, patch)),
       fakeBackups: () => import('@/dev/fakeLive').then((m) => m.fakeUserData.get('homescape-plan-backups')),
@@ -530,6 +531,11 @@ export default function App() {
       // Loft look: wall kinds with the look of their faces, window frames (dev/sceneProbe.ts > loft); the walk's collision boxes of the active floor
       loft: () => import('@/dev/sceneProbe').then((m) => m.loft()),
       colliders: () => import('@/scene/fps').then((m) => m.buildColliders(activeLevel(useLayout.getState())!).boxes),
+      // Presence (Layout.presence): a value sets it first (null removes it); returns the resolved people and pets, pending drag corrections and the drag
+      presence: (next) => {
+        if (next !== undefined) useLayout.getState().setPresence(next)
+        return import('@/scene/presenceState').then((m) => ({ plan: useLayout.getState().layout?.presence ?? null, ...m.presenceSnapshot() }))
+      },
       sound: () => import('@/audio/engine').then((m) => m.soundDebug()),
       soundUnlock: () => import('@/audio/engine').then((m) => m.unlock()),
       soundNight: () => import('@/audio/ambienceState').then((m) => m.ambienceDebug.callNow()),

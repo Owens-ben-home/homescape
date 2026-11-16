@@ -8,7 +8,7 @@ import type { PetAction, PetMode, PetNeeds, Species, VisitorKind } from '@/model
 
 /** Position, task and needs of the pets; the visitor; test commands. */
 export const petsDebug: {
-  pets: { id: string; species: Species; variant: string; x: number; z: number; y: number; roomId: string | null; action: PetAction | null; label: string; pose: string; moving: boolean; react: string | null; bubble: string | null; needs: PetNeeds; heading: number }[]
+  pets: { id: string; species: Species; variant: string; x: number; z: number; y: number; roomId: string | null; action: PetAction | null; label: string; pose: string; moving: boolean; react: string | null; bubble: string | null; needs: PetNeeds; heading: number; hidden?: boolean }[]
   mode: PetMode
   /** Number of live (NPC) pets; 0 in edit mode */
   live: number

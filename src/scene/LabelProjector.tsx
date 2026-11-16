@@ -7,6 +7,9 @@ import { activeLevel, useLayout } from '@/model/layoutStore'
 import { presetRects, usePlacement } from '@/model/placement'
 import { DEFAULT_Y } from './kit/registry'
 import { labelEntries } from './labels'
+import { peopleDebug } from './People'
+import { petsDebug } from './petsDebug'
+import { presenceShown } from './presenceState'
 
 /** Label id → 3D point; read from the current plan every frame (the label follows a moved room or item). */
 function anchorFor(id: string, out: THREE.Vector3) {
@@ -26,6 +29,21 @@ function anchorFor(id: string, out: THREE.Vector3) {
   const s = useLayout.getState()
   const level = activeLevel(s)
   if (!level) return false
+  // The card of an avatar or pet (ui/PersonCard.tsx): above the head
+  if (id === 'person-card') {
+    const k = presenceShown.key
+    if (!k) return false
+    if (k.startsWith('p:')) {
+      const p = peopleDebug.persons.find((q) => q.who === k.slice(2))
+      if (!p) return false
+      out.set(p.x, p.pose === 'lie' ? 1.1 : p.pose === 'sit' ? 1.5 : 1.95, p.z)
+      return true
+    }
+    const pet = petsDebug.pets.find((q) => q.id === k.slice(2))
+    if (!pet || pet.hidden) return false
+    out.set(pet.x, pet.y + (pet.species === 'cat' ? 0.6 : 1), pet.z)
+    return true
+  }
   if (id.startsWith('room-')) {
     const r = level.rooms.find((x) => `room-${x.id}` === id)
     if (!r) return false

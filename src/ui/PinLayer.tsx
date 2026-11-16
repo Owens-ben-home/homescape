@@ -11,6 +11,7 @@ import { isStreetSurface, roomArea } from '@/model/geometry'
 import { registerLabel } from '@/scene/labels'
 import { useView } from '@/scene/camera'
 import { t, tn } from '@/i18n'
+import { PersonCard } from './PersonCard'
 import { fmt, type RoomStats } from './useHome'
 
 /** Cycles the opening direction: left-in -> right-in -> right-out -> left-out -> back to the start */
@@ -164,6 +165,7 @@ export default function PinLayer({ stats }: { stats: Record<string, RoomStats> }
       </div>
       {!placing && <SelectedTag />}
       <GhostTag />
+      <PersonCard />
     </div>
   )
 }

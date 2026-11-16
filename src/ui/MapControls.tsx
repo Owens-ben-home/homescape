@@ -1,6 +1,11 @@
 import { Box, BrickWall, CircleHelp, Hand, House, Map, Minus, PanelRightClose, PanelRightOpen, Plus, Rotate3d, RotateCcw, RotateCw, Tag, Users, Warehouse, X } from 'lucide-react'
 import { useState } from 'react'
-import { useApartment } from '@/model/layoutStore'
+import { useApartment, useLayout } from '@/model/layoutStore'
+import { describePeople, LOW_CONFIDENCE } from '@/model/presence'
+import { LOOKS } from '@/scene/humanModel'
+import { usePresenceUi } from '@/scene/presenceState'
+import { useHa } from '@/ha/store'
+import { PresenceEditor } from './PresenceEditor'
 import { cameraApi, type StreetKinds, toggleRoof, useView } from '@/scene/camera'
 import { usePeoplePlan } from '@/scene/People'
 import { t, tn } from '@/i18n'
@@ -86,12 +91,17 @@ function PeoplePanel({ onClose }: { onClose: () => void }) {
   const street = useView((s) => s.street)
   const setStreet = useView((s) => s.setStreet)
   const { plan, level } = usePeoplePlan()
+  const presence = useLayout((s) => s.layout?.presence)
+  const entities = useHa((s) => s.entities)
+  const simulated = usePresenceUi((s) => s.simulated)
+  const [editing, setEditing] = useState(false)
+  const named = describePeople(level, presence, entities, simulated)
   const nameOf = (id: string) => level?.rooms.find((r) => r.id === id)?.name
   const names = (plan?.active ?? []).map((id) => nameOf(id) && (plan?.desk.includes(id) ? t('{room} (at the computer)', { room: nameOf(id)! }) : nameOf(id))).filter(Boolean)
   const litNames = (plan?.lit ?? []).map(nameOf).filter(Boolean)
   const seg = (on: boolean) => `min-h-9 flex-1 rounded-lg text-[12.5px] font-semibold ${on ? 'bg-brand text-white' : 'bg-surface-2 text-ink-2 hover:text-ink'}`
   return (
-    <div className="glass absolute right-[52px] top-0 grid w-[280px] gap-3 rounded-2xl p-4" id="people-panel">
+    <div className="glass absolute right-[52px] top-0 grid max-h-[calc(100dvh-2rem)] w-[300px] grid-cols-[minmax(0,1fr)] gap-3 overflow-y-auto rounded-2xl p-4" id="people-panel">
       <div className="flex items-center justify-between">
         <p className="text-[13px] font-semibold">{t('People')}</p>
         <button type="button" onClick={onClose} className="grid size-7 place-items-center rounded-lg text-ink-3 hover:bg-surface-2" title={t('Close')}>
@@ -106,6 +116,37 @@ function PeoplePanel({ onClose }: { onClose: () => void }) {
           {t('Hide')}
         </button>
       </div>
+      {named.length > 0 && (
+        <div className="grid gap-1.5" id="presence-list">
+          {named.map((p) => {
+            const r = p.reading
+            const where = !r ? t('No sensor reading') : p.region ? p.region.room.name : r.value.replace(/_/g, ' ')
+            return (
+              <div key={p.key} className="grid gap-1 rounded-xl bg-surface-2 px-3 py-2" data-presence-row={p.key}>
+                <div className="flex items-center gap-2">
+                  <span className="size-3.5 shrink-0 rounded-full ring-1 ring-black/10" style={{ background: LOOKS[p.look]?.top }} />
+                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-ink">{p.name}</span>
+                  <span className="shrink-0 text-[12px] text-ink-2">{p.simulated ? t('Simulated') : where}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-ink-3">{p.roomEntity}</span>
+                  {!p.simulated && r?.confidence != null && (
+                    <span className={`shrink-0 font-mono text-[10.5px] ${r.confidence < LOW_CONFIDENCE ? 'text-warn' : 'text-ink-3'}`}>{t('{percent}% sure', { percent: Math.round(r.confidence * 100) })}</span>
+                  )}
+                </div>
+                <div className="flex gap-1">
+                  <button type="button" data-presence-mode="sensor" className={`${seg(!p.simulated)} min-h-8 text-[11.5px]`} onClick={() => usePresenceUi.getState().setSimulated(p.key, false)}>
+                    {t('From sensor')}
+                  </button>
+                  <button type="button" data-presence-mode="simulated" className={`${seg(p.simulated)} min-h-8 text-[11.5px]`} onClick={() => usePresenceUi.getState().setSimulated(p.key, true)}>
+                    {t('Simulated')}
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
       <div className="grid gap-1.5">
         <span className="text-[12px] font-semibold text-ink-2">{t('Household')}</span>
         <div className="flex gap-1.5">
@@ -129,6 +170,10 @@ function PeoplePanel({ onClose }: { onClose: () => void }) {
           'With the alarm set to Away everyone is out; set to Night (or with no motion between 23:00 and 07:00) everyone is in bed. Someone is in every room with motion or a light just turned on (20 min) and leaves when the light goes off. Someone sits at a computer that is on (Ping). With activity in more rooms at once the number of people grows up to 3. Shown in view mode.',
         )}
       </p>
+      <button type="button" id="presence-edit" className="rounded-lg px-2 py-1.5 text-left text-[12px] font-semibold text-brand hover:bg-brand-50" onClick={() => setEditing((v) => !v)}>
+        {editing ? t('Hide the presence settings') : t('Presence: named people and rooms')}
+      </button>
+      {editing && <PresenceEditor />}
       <div className="grid gap-2 border-t border-line pt-3" id="street-panel">
         <span className="text-[12px] font-semibold text-ink-2">{t('Outside')}</span>
         {STREET_ROWS.map(([k, label]) => (

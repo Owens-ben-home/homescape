@@ -1,7 +1,7 @@
 import type { Entities } from '@/ha/types'
 import { t } from '@/i18n'
 import { sizeOf } from './catalog'
-import { bounds, isOutdoor, rectsOf, runOpenings, WALL_IN, wallRuns } from './geometry'
+import { bounds, inRect, isOutdoor, rectsOf, runOpenings, WALL_IN, wallRuns } from './geometry'
 import { footprints, layerOf } from './rules'
 import type { Item, ItemKind, Level, Rect, Room } from './types'
 
@@ -433,6 +433,24 @@ export function randomSpot(g: PetGrid, rnd: () => number, outdoor = false, room?
   return null
 }
 
+/**
+ * Random walkable point inside the given rectangles (a room, or a zone of one; presence pins a pet there); null when none was found.
+ * Tries a few dozen random points of the rectangles, so a zone with furniture all over it may come back empty.
+ */
+export function randomSpotIn(g: PetGrid, rnd: () => number, rects: Rect[], outdoor = false) {
+  const area = rects.reduce((a, r) => a + r.w * r.d, 0)
+  if (!(area > 0)) return null
+  for (let tries = 0; tries < 60; tries++) {
+    let pick = rnd() * area
+    const r = rects.find((q) => (pick -= q.w * q.d) <= 0) ?? rects[rects.length - 1]
+    const x = r.x + rnd() * r.w
+    const z = r.z + rnd() * r.d
+    const [i, j] = cellOf(g, x, z)
+    if (inGrid(g, i, j) && allowed(g, j * g.nx + i, outdoor)) return centerOf(g, i, j)
+  }
+  return null
+}
+
 /* ---------- favorite places ---------- */
 
 export type PlaceKind = 'bed' | 'nap' | 'perch' | 'food' | 'water' | 'litter' | 'scratch' | 'toy' | 'sun' | 'sill' | 'house'
@@ -586,6 +604,11 @@ export interface ChooseInput {
   sillOk?: (p: PetPlace) => boolean
   /** Whether it may go outside (garden) */
   outdoor?: boolean
+  /**
+   * Presence: the pet is pinned to these rectangles (the room, or a zone of it, its room sensor reports): its places, the people
+   * it follows and its wandering stay inside them
+   */
+  region?: Rect[] | null
   rnd: () => number
 }
 
@@ -603,7 +626,8 @@ export function chooseGoal(c: ChooseInput): PetGoal {
   const rnd = c.rnd
   const n = c.needs
   const free = (p: { x: number; z: number }) => !c.taken.some((t) => Math.hypot(t.x - p.x, t.z - p.z) < 0.45)
-  const usable = c.places.filter((p) => free(p) && (!p.outdoor || (c.outdoor && c.mode === 'home')) && (p.kind !== 'sill' || (c.sillOk?.(p) ?? true)) && (p.kind !== 'sun' || c.day))
+  const inReg = (p: { x: number; z: number }) => !c.region || c.region.some((r) => inRect(r, p.x, p.z))
+  const usable = c.places.filter((p) => free(p) && inReg(p) && (!p.outdoor || (c.outdoor && c.mode === 'home')) && (p.kind !== 'sill' || (c.sillOk?.(p) ?? true)) && (p.kind !== 'sun' || c.day))
   const of = (...kinds: PlaceKind[]) => usable.filter((p) => kinds.includes(p.kind))
   const pick = <T>(list: T[]) => list[Math.floor(rnd() * list.length)]
   const nearest = (list: PetPlace[]) => list.slice().sort((a, b) => Math.hypot(a.x - c.pos.x, a.z - c.pos.z) - Math.hypot(b.x - c.pos.x, b.z - c.pos.z))[0]
@@ -678,16 +702,18 @@ export function chooseGoal(c: ChooseInput): PetGoal {
       opt(bored * (away ? 0.2 : 0.7), () => zoom())
     }
     // affection: the dog follows someone, the cat sits next to someone seated
-    if (!away && c.people.length) {
+    // (with a region only the people inside it count; `who` stays the index into c.people)
+    const around = c.people.map((_, i) => i).filter((i) => inReg(c.people[i]))
+    if (!away && around.length) {
       const lonely = n.love < 0.5 ? 2.5 : 0.7
       if (!cat) {
         opt(lonely * 1.6, () => {
-          const who = Math.floor(rnd() * c.people.length)
+          const who = around[Math.floor(rnd() * around.length)]
           const p = c.people[who]
           return { ...spot(p.x, p.z, 'follow', range(rnd, 18, 35), 'sit', 'trot'), follow: 'person', who }
         })
       } else {
-        const sitting = c.people.map((p, i) => ({ p, i })).filter((q) => q.p.sitting)
+        const sitting = c.people.map((p, i) => ({ p, i })).filter((q) => q.p.sitting && inReg(q.p))
         if (sitting.length)
           opt(lonely, () => {
             const q = pick(sitting)
@@ -697,7 +723,7 @@ export function chooseGoal(c: ChooseInput): PetGoal {
           })
         // sometimes runs off when someone walks past closely
         const walker = near(
-          c.people.filter((p) => p.walking),
+          c.people.filter((p) => p.walking && inReg(p)),
           1.3,
         )
         if (walker) opt(1.5, () => {

@@ -36,8 +36,8 @@ const DISC = new THREE.CircleGeometry(0.3, 28)
 const BLANKET = new THREE.BoxGeometry(0.66, 0.17, 1.44)
 
 /** Bone segment: merged geometry, shared material, casts shadows */
-function Seg({ geo, mirror, cast = true }: { geo: THREE.BufferGeometry; mirror?: boolean; cast?: boolean }) {
-  return <mesh geometry={geo} material={humanMaterial} castShadow={cast} raycast={noRay} scale={mirror ? [-1, 1, 1] : 1} />
+function Seg({ geo, m, mirror, cast = true }: { geo: THREE.BufferGeometry; m: THREE.Material; mirror?: boolean; cast?: boolean }) {
+  return <mesh geometry={geo} material={m} castShadow={cast} raycast={noRay} scale={mirror ? [-1, 1, 1] : 1} />
 }
 
 /** Placement of held props (from the right wrist, inside the fist) */
@@ -51,7 +51,11 @@ const PROP_AT: Record<PropName, { p: [number, number, number]; r: [number, numbe
   glass: { p: [0.03, -0.055, 0.03], r: [0, 0, 0] },
 }
 
-export function Human({ look, register }: { look: Look; register: (r: HumanRefs | null) => void }) {
+/**
+ * `material` replaces the shared body material (people.tsx gives each slot its own, so one avatar can be drawn faded without
+ * touching the others); `children` are added to the root (an invisible hit capsule for dragging).
+ */
+export function Human({ look, register, material = humanMaterial, children }: { look: Look; register: (r: HumanRefs | null) => void; material?: THREE.Material; children?: React.ReactNode }) {
   const g = humanParts(look)
   const props = propParts()
   const b = look.build
@@ -86,9 +90,10 @@ export function Human({ look, register }: { look: Look; register: (r: HumanRefs 
       blanket: r.blanket!,
       zzz: r.zzz!,
       shadow: r.shadow!,
+      mats: [material, blanketMat],
     })
     return () => register(null)
-  }, [register])
+  }, [register, material, blanketMat])
 
   const side = (s: -1 | 1) => (s < 0 ? 'N' : 'P')
   const ez = eyeZ()
@@ -100,48 +105,48 @@ export function Human({ look, register }: { look: Look; register: (r: HumanRefs 
       </mesh>
       <group ref={set('body')}>
         <group ref={set('hips')} position={[0, LEG.hip, 0]}>
-          <Seg geo={g.pelvis} />
+          <Seg m={material} geo={g.pelvis} />
           {([-1, 1] as const).map((s) => (
             <group key={s} ref={set(`thigh${side(s)}`)} position={[s * 0.095 * b, -0.02, 0]}>
-              <Seg geo={g.thigh} />
+              <Seg m={material} geo={g.thigh} />
               <group ref={set(`knee${side(s)}`)} position={[0, -LEG.thigh, 0]}>
-                <Seg geo={g.shin} />
+                <Seg m={material} geo={g.shin} />
                 <group ref={set(`foot${side(s)}`)} position={[0, -LEG.shin, 0]}>
-                  <Seg geo={g.foot} />
+                  <Seg m={material} geo={g.foot} />
                 </group>
               </group>
             </group>
           ))}
           <group ref={set('spine')} position={[0, 0.06, 0]}>
-            <Seg geo={g.spine} />
+            <Seg m={material} geo={g.spine} />
             <group ref={set('chest')} position={[0, 0.18, 0]}>
-              <Seg geo={g.chest} />
+              <Seg m={material} geo={g.chest} />
               {([-1, 1] as const).map((s) => (
                 <group key={s} ref={set(`arm${side(s)}`)} position={[s * 0.2 * b, 0.13, 0]}>
-                  <Seg geo={g.upperArm} />
+                  <Seg m={material} geo={g.upperArm} />
                   <group ref={set(`elbow${side(s)}`)} position={[0, -0.27, 0]}>
-                    <Seg geo={g.forearm} />
+                    <Seg m={material} geo={g.forearm} />
                     <group ref={set(`hand${side(s)}`)} position={[0, -0.235, 0]}>
-                      <Seg geo={g.hand} mirror={s > 0} />
+                      <Seg m={material} geo={g.hand} mirror={s > 0} />
                       {s < 0 &&
                         (Object.keys(PROP_AT) as PropName[]).map((k) => (
-                          <mesh key={k} ref={set(`prop-${k}`)} geometry={props[k]} material={humanMaterial} position={PROP_AT[k].p} rotation={PROP_AT[k].r} visible={false} raycast={noRay} />
+                          <mesh key={k} ref={set(`prop-${k}`)} geometry={props[k]} material={material} position={PROP_AT[k].p} rotation={PROP_AT[k].r} visible={false} raycast={noRay} />
                         ))}
                     </group>
                   </group>
                 </group>
               ))}
               <group ref={set('neck')} position={[0, 0.2, 0]}>
-                <Seg geo={g.neck} />
+                <Seg m={material} geo={g.neck} />
                 {/* Stylized large head (about 5.5 heads tall) */}
                 <group ref={set('head')} position={[0, 0.07, 0.005]} scale={1.1}>
-                  <Seg geo={g.head} />
+                  <Seg m={material} geo={g.head} />
                   <group ref={set('tail')} position={[0, 0.21, -0.115]}>
-                    <Seg geo={g.tail} />
+                    <Seg m={material} geo={g.tail} />
                   </group>
                   {([-1, 1] as const).map((s) => (
                     <group key={s} ref={set(`lid${side(s)}`)} position={[s * EYE.x, EYE.y, ez]} visible={false}>
-                      <Seg geo={g.lid} cast={false} />
+                      <Seg m={material} geo={g.lid} cast={false} />
                     </group>
                   ))}
                 </group>
@@ -162,6 +167,7 @@ export function Human({ look, register }: { look: Look; register: (r: HumanRefs 
           </mesh>
         </Billboard>
       </group>
+      {children}
     </group>
   )
 }
