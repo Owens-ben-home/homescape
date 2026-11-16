@@ -146,7 +146,8 @@ function GhostTag() {
 }
 
 /** Label layer above the 3D scene and below the UI */
-export default function PinLayer({ stats }: { stats: Record<string, RoomStats> }) {
+/** tagsOnly (app mode): the room names only, no selection tag, no ghost tag, no person card */
+export default function PinLayer({ stats, tagsOnly = false }: { stats: Record<string, RoomStats>; tagsOnly?: boolean }) {
   const level = useLayout((s) => activeLevel(s))
   const edit = useLayout((s) => s.mode === 'edit')
   // While placing, the ghost's tag stands out: room tags fade and the selection tag hides
@@ -163,9 +164,9 @@ export default function PinLayer({ stats }: { stats: Record<string, RoomStats> }
             <RoomTag key={r.id} room={r} stats={stats[r.id]} edit={edit} />
           ))}
       </div>
-      {!placing && <SelectedTag />}
-      <GhostTag />
-      <PersonCard />
+      {!tagsOnly && !placing && <SelectedTag />}
+      {!tagsOnly && <GhostTag />}
+      {!tagsOnly && <PersonCard />}
     </div>
   )
 }

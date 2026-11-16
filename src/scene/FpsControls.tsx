@@ -1,4 +1,5 @@
 import { useFrame, useThree } from '@react-three/fiber'
+import { nativeTap } from '@/native/appMode'
 import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { stepAt } from '@/audio/floor'
@@ -133,6 +134,7 @@ function FpsRig() {
       const aim = useFps.getState().aim
       if (!aim) return
       if (document.pointerLockElement) document.exitPointerLock()
+      if (nativeTap('item', aim.itemId)) return
       useLayout.getState().select({ type: 'item', id: aim.itemId })
     }
     const onKeyDown = (e: KeyboardEvent) => {

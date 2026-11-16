@@ -4,6 +4,7 @@ import { create } from 'zustand'
 import { bounds } from '@/model/geometry'
 import { useLayout } from '@/model/layoutStore'
 import type { Room } from '@/model/types'
+import { appInsets, appOn } from '@/native/appMode'
 import { panelSpace, sheetSpace } from '@/ui/panelState'
 
 /*
@@ -275,6 +276,11 @@ const worldPerPx = (d: number, h: number) => (2 * d * tanHalf) / h
 function panelOffset(d: number): [number, number, number] {
   const { h, wide, edit, used } = viewport()
   const wpp = worldPerPx(d, h)
+  // App mode: no panel or bars; the home sits in the area the native shell leaves free (+x moves the scene left, +y up)
+  if (appOn()) {
+    const i = appInsets()
+    return [((i.right - i.left) / 2) * wpp, ((i.bottom - i.top) / 2) * wpp, 0]
+  }
   // +y moves the scene up. On a wide screen by half the build bar's extra height;
   // on a phone above the bottom card in view mode, between the top bar and the build bar in edit mode.
   // With the right panel (ui/panelState.ts) open the scene moves left by half the panel width; centered when closed
@@ -285,8 +291,9 @@ function panelOffset(d: number): [number, number, number] {
 
 function fit(b: ReturnType<typeof bounds>, plan: boolean) {
   const { w, h, wide, used } = viewport()
-  const free = wide ? w - panelSpace(w) - 24 : w
-  const vfree = (h - used) / h
+  const ins = appOn() ? appInsets() : null
+  const free = ins ? Math.max(120, w - ins.left - ins.right) : wide ? w - panelSpace(w) - 24 : w
+  const vfree = ins ? Math.max(120, h - ins.top - ins.bottom) / h : (h - used) / h
   const bw = b.maxX - b.minX
   const bd = b.maxZ - b.minZ
   if (plan) {

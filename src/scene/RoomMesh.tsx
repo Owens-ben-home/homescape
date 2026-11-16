@@ -1,4 +1,5 @@
 import { useFrame, useThree, type ThreeElements, type ThreeEvent } from '@react-three/fiber'
+import { nativeTap } from '@/native/appMode'
 import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
@@ -564,6 +565,7 @@ export function RoomMesh({ room, level: fixed, still: stillProp }: { room: Room;
       if (s.tool !== 'select' || e.delta > DRAG_PX || cameraKey() || usePlacement.getState().target) return
       e.stopPropagation()
       s.select({ type: 'room', id: room.id })
+      nativeTap('room', room.id)
     },
     onDoubleClick: (e) => {
       e.stopPropagation()

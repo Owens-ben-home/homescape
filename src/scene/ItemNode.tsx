@@ -1,4 +1,5 @@
 import { useCursor } from '@react-three/drei'
+import { nativeTap } from '@/native/appMode'
 import { type ThreeEvent } from '@react-three/fiber'
 import { useFrame } from '@react-three/fiber'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
@@ -283,6 +284,8 @@ function ItemNodeImpl({ item, entity, related, night, levelId, still = false, ru
           if (document.pointerLockElement) return
           if (s.tool !== 'select' || e.delta > clickSlop(pointerKind.last) || busy()) return
           e.stopPropagation()
+          // App mode: the native shell shows the controls; it only hears which item was tapped (the outline marks it)
+          if (nativeTap('item', item.id)) return s.select({ type: 'item', id: item.id })
           // Cabinet, dresser, drawer in view mode: a click opens the door, another click closes it (no card opens).
           // On a cabinet with a linked light (such as an under-counter LED) a tap does not open the doors but the pill,
           // which offers both the LED and the doors; with a mouse the pill already shows on hover, so a click opens the doors

@@ -43,8 +43,12 @@ import { multiCounts, removeMulti, removeRoom } from '@/ui/removal'
 import { usePlacementInput } from '@/ui/usePlacementInput'
 import { mountY, nudgeAlongWall, setMountY } from '@/ui/mount'
 import { isWallMounted } from '@/model/rules'
+import { detectApp, useApp } from '@/native/appMode'
+import NativeBridge from '@/native/NativeBridge'
 
 const Scene = lazy(() => import('@/scene/Scene'))
+/** Hosted by a native shell (or ?app=1): the native bridge runs (src/native, docs/native-bridge.md) */
+const HOSTED = detectApp()
 /** In the home screen app the connection dialog opened once by itself (once closed, it does not open again) */
 const STANDALONE_ASKED = 'homescape-standalone-asked'
 function askStandalone() {
@@ -367,6 +371,8 @@ function EmptyHint() {
 /** Once on first start: a short hint that introduces the controls. */
 function useFirstHint() {
   useEffect(() => {
+    // App mode: the shell has its own hints; the tip would only become a notice
+    if (useApp.getState().on) return
     let seen = false
     try {
       seen = localStorage.getItem('homescape-hint-controls') === '1'
@@ -426,7 +432,10 @@ export default function App() {
   const [welcome, setWelcome] = useState(() => !SITE && askStandalone())
   const [connectOpen, setConnectOpen] = useState(welcome)
   const mode = useLayout((s) => s.mode)
-  const dashboard = useView((s) => s.dashboard) && mode === 'view'
+  // App mode: only the canvas (and the room names, and the connect screen when the connection needs it)
+  const app = useApp((s) => s.on)
+  const connectStatus = useHa((s) => s.status)
+  const dashboard = useView((s) => s.dashboard) && mode === 'view' && !app
   const dash = usePresence(dashboard, 200)
   const fps = useView((s) => s.fps)
   const night = useNight()
@@ -580,44 +589,52 @@ export default function App() {
         </Suspense>
       </div>
       {/* Quick on/off pill for items (ui/QuickPill.tsx, placed by scene/QuickAnchor.tsx): on a layer apart from the scene events */}
-      <div id="quick-layer" className="pointer-events-none absolute inset-0 z-[40] overflow-hidden">
-        <QuickPill />
-      </div>
-      {!fps && <PinLayer stats={stats} />}
-      <div className="pointer-events-none absolute inset-0 flex flex-col">
-        <TopBar onConnect={() => setConnectOpen(true)} />
-        <div className="relative flex-1">
-          {fps ? (
-            <>
-              <FpsHud />
-              <Inspector stats={stats} />
-            </>
-          ) : (
-            <>
-              {!dashboard && (
+      {!app && (
+        <div id="quick-layer" className="pointer-events-none absolute inset-0 z-[40] overflow-hidden">
+          <QuickPill />
+        </div>
+      )}
+      {!fps && <PinLayer stats={stats} tagsOnly={app} />}
+      {!app && (
+        <>
+          <div className="pointer-events-none absolute inset-0 flex flex-col">
+            <TopBar onConnect={() => setConnectOpen(true)} />
+            <div className="relative flex-1">
+              {fps ? (
                 <>
-                  {mode === 'view' ? <KpiTiles totals={totals} /> : <EditToolbar />}
-                  <MapControls />
+                  <FpsHud />
                   <Inspector stats={stats} />
-                  {mode === 'edit' ? <BuildBar /> : <RoomBar stats={stats} />}
+                </>
+              ) : (
+                <>
+                  {!dashboard && (
+                    <>
+                      {mode === 'view' ? <KpiTiles totals={totals} /> : <EditToolbar />}
+                      <MapControls />
+                      <Inspector stats={stats} />
+                      {mode === 'edit' ? <BuildBar /> : <RoomBar stats={stats} />}
+                    </>
+                  )}
+                  {/* The dashboard stays briefly while leaving and fades out (index.css > dash-out) */}
+                  {dash.mounted && <Dashboard leaving={dash.leaving} />}
                 </>
               )}
-              {/* The dashboard stays briefly while leaving and fades out (index.css > dash-out) */}
-              {dash.mounted && <Dashboard leaving={dash.leaving} />}
-            </>
-          )}
-        </div>
-      </div>
-      {mode === 'edit' && <EmptyHint />}
-      {mode === 'edit' && <MultiBar />}
-      <AlarmBanner />
-      <SearchPalette />
-      <SyncPrompt />
-      <PlanHistory />
-      <HomeScreenGuide />
-      <Toast />
-      {SITE && <SiteIntro />}
-      {connectOpen && (
+            </div>
+          </div>
+          {mode === 'edit' && <EmptyHint />}
+          {mode === 'edit' && <MultiBar />}
+          <AlarmBanner />
+          <SearchPalette />
+          <SyncPrompt />
+          <PlanHistory />
+          <HomeScreenGuide />
+          <Toast />
+        </>
+      )}
+      {HOSTED && <NativeBridge />}
+      {SITE && !app && <SiteIntro />}
+      {/* App mode hides everything else, but a connection that needs signing in must show its screen */}
+      {(connectOpen || (app && connectStatus === 'error')) && (
         <ConnectDialog
           welcome={welcome}
           onClose={() => {

@@ -2,6 +2,8 @@
 declare const __HA_PROXY_TARGET__: string
 
 interface Window {
+  /** Native bridge (src/native/bridge.ts, docs/native-bridge.md): exists once `ready` was posted to the shell */
+  homescapeNative?: { dispatch: (cmd: Record<string, unknown>) => void }
   /** Test and screenshot hook (tools/shot.mjs). Not used by the UI code. */
   __homescape?: {
     select: (sel: { type: 'room' | 'item'; id: string } | null) => void

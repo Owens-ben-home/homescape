@@ -2,6 +2,7 @@ import type { ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import { create } from 'zustand'
 import { useHa } from '@/ha/store'
+import { nativeTap } from '@/native/appMode'
 import { t } from '@/i18n'
 import type { Correction } from '@/model/people'
 import { activeLevel, useLayout } from '@/model/layoutStore'
@@ -191,7 +192,10 @@ export function dragUp(e: ThreeEvent<PointerEvent>) {
   kick()
   if (dragged) dropAt(d, x, z)
   // A tap (no drag): the card stays for a few seconds, which is how touch screens see it
-  else if (Math.hypot(e.nativeEvent.clientX - d.sx, e.nativeEvent.clientY - d.sy) <= clickSlop(pointerKind.last)) usePresenceUi.getState().pinFor(d.key)
+  else if (Math.hypot(e.nativeEvent.clientX - d.sx, e.nativeEvent.clientY - d.sy) <= clickSlop(pointerKind.last)) {
+    // App mode: the shell shows the person; the key is `p:<person>` or `i:<pet item>` here, the shell knows the person's own key
+    if (!d.key.startsWith('p:') || !nativeTap('person', d.key.slice(2))) usePresenceUi.getState().pinFor(d.key)
+  }
 }
 
 /* ---------- the card and the test hook ---------- */
