@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { SoundScape } from '@/audio/SoundScape'
 import { useHa } from '@/ha/store'
+import { useActivityClock, ruleActive } from '@/model/activity'
 import { activeLevel, FLOOR_H, useApartment, useLayout } from '@/model/layoutStore'
 import { usePlacement } from '@/model/placement'
 import type { HassEntity } from '@/ha/types'
@@ -498,11 +499,12 @@ function RoomLightSync({ night, real }: { night: boolean; real: RealSun | null }
   const level = useLayout((s) => activeLevel(s))
   const entities = useHa((s) => s.entities)
   const invalidate = useThree((s) => s.invalidate)
+  const clock = useActivityClock()
   useEffect(() => {
     const sky = real && !night ? { level: real.level, sun: real.dir, strength: real.strength } : undefined
     setRoomLights(level ? computeRoomLights(level, entities, night, sky) : [])
     invalidate()
-  }, [level, entities, night, real, invalidate])
+  }, [level, entities, night, real, invalidate, clock])
   return null
 }
 
@@ -526,6 +528,8 @@ function Levels({ night }: { night: boolean }) {
   const lower = useView((s) => s.lowerFloors)
   const fps = useView((s) => s.fps)
   const entities = useHa((s) => s.entities)
+  // Re-evaluates when an activity rule's hold runs out
+  useActivityClock()
   if (!layout || !level) return null
   const e0 = level.elevation ?? 0
   const shown = layout.levels.filter((l) => {
@@ -547,6 +551,7 @@ function Levels({ night }: { night: boolean }) {
                 item={it}
                 entity={it.entityId ? entities[it.entityId] : undefined}
                 related={relatedOf(it, entities)}
+                ruleOn={it.activeWhen?.length ? ruleActive(it, entities) : false}
                 night={night}
                 levelId={l.id}
                 still={!active}

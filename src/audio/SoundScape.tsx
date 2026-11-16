@@ -3,6 +3,7 @@ import { deviceClass, domainOf, isActive } from '@/ha/derive'
 import { useHa } from '@/ha/store'
 import type { Entities, HassEntity } from '@/ha/types'
 import { currentWeather } from '@/ha/weather'
+import { hasRules, ruleActive } from '@/model/activity'
 import { bindingsOf } from '@/model/bindings'
 import { bounds, doorSides, isAperture, isOutdoor, rectsOf, roomAt } from '@/model/geometry'
 import { activeLevel, useLayout } from '@/model/layoutStore'
@@ -43,11 +44,11 @@ const seedOf = (id: string) => {
 
 const TV_DOMAINS = ['media_player', 'remote']
 /** Whether the TV screen is on and playing (same rule as kit/devices.tsx > tvScreenOf) */
-function tvState(main: HassEntity | undefined, rel: HassEntity[]) {
+function tvState(main: HassEntity | undefined, rel: HassEntity[], ruleOn = false) {
   const self = main && TV_DOMAINS.includes(domainOf(main.entity_id))
   const ents = rel.filter((e) => TV_DOMAINS.includes(domainOf(e.entity_id)))
-  if (!self && !ents.length) return { on: Boolean(main) && domainOf(main!.entity_id) !== 'light' && isActive(main), playing: false }
-  return { on: (self && isActive(main)) || ents.some(isActive), playing: (self && main!.state === 'playing') || ents.some((e) => e.state === 'playing') }
+  if (!self && !ents.length) return { on: ruleOn || (Boolean(main) && domainOf(main!.entity_id) !== 'light' && isActive(main)), playing: false }
+  return { on: ruleOn || (self && isActive(main)) || ents.some(isActive), playing: (self && main!.state === 'playing') || ents.some((e) => e.state === 'playing') }
 }
 
 const isRainy = (w?: string) => Boolean(w && /rain|pouring|lightning|hail/.test(w))
@@ -87,8 +88,8 @@ function busy(all: HassEntity[]) {
 }
 
 /** Continuous sound of an item: which sound, its level and parameter (null: none) */
-function itemVoice(it: Item, main: HassEntity | undefined, rel: HassEntity[]): { voice: VoiceName; gain?: number; p?: number; ref?: number } | null {
-  const on = running(main) || rel.some(running)
+function itemVoice(it: Item, main: HassEntity | undefined, rel: HassEntity[], ruleOn = false): { voice: VoiceName; gain?: number; p?: number; ref?: number } | null {
+  const on = running(main) || rel.some(running) || ruleOn
   const all = [main, ...rel].filter(Boolean) as HassEntity[]
   // Alerting sensors (smoke, water leak): when the binary sensor is on
   const alert = isActive(main) || rel.some(isActive)
@@ -100,11 +101,11 @@ function itemVoice(it: Item, main: HassEntity | undefined, rel: HassEntity[]): {
     case 'aquarium':
       return { voice: 'aquarium', gain: 0.7 }
     case 'tv': {
-      const s = tvState(main, rel)
+      const s = tvState(main, rel, ruleOn)
       return s.playing ? { voice: 'tvShow', p: seedOf(it.id), gain: 0.9, ref: 2 } : s.on ? { voice: 'tvMenu', gain: 0.5 } : null
     }
     case 'projector': {
-      const s = tvState(main, rel)
+      const s = tvState(main, rel, ruleOn)
       return s.playing ? { voice: 'tvShow', p: seedOf(it.id), gain: 0.9, ref: 2 } : s.on ? { voice: 'pcFan', p: 1, gain: 0.7 } : null
     }
     case 'speaker':
@@ -149,11 +150,11 @@ function itemVoice(it: Item, main: HassEntity | undefined, rel: HassEntity[]): {
     case 'towelWarmer':
       return on ? { voice: 'tick', gain: 0.6 } : null
     case 'washer':
-      return busy(all) ? { voice: 'washer', gain: 0.8 } : null
+      return ruleOn || busy(all) ? { voice: 'washer', gain: 0.8 } : null
     case 'dryer':
-      return busy(all) ? { voice: 'dryer', gain: 0.8 } : null
+      return ruleOn || busy(all) ? { voice: 'dryer', gain: 0.8 } : null
     case 'dishwasher':
-      return busy(all) ? { voice: 'dishwasher', gain: 0.7 } : null
+      return ruleOn || busy(all) ? { voice: 'dishwasher', gain: 0.7 } : null
     case 'microwave':
       return on ? { voice: 'microwave', gain: 0.7 } : null
     case 'coffeeMachine':
@@ -516,7 +517,7 @@ function tick() {
   for (const it of lv.items) {
     const main = it.entityId ? ents[it.entityId] : undefined
     const rel = (it.extras ?? []).map((id) => ents[id]).filter(Boolean) as HassEntity[]
-    let v = itemVoice(it, main, rel)
+    let v = itemVoice(it, main, rel, hasRules(it) && ruleActive(it, ents, now))
     // Motor while a curtain, awning or garage door moves
     if (!v && main && domainOf(main.entity_id) === 'cover' && ['opening', 'closing'].includes(main.state)) v = { voice: 'motor', p: it.kind === 'garageDoor' || it.kind === 'gate' ? 1 : 0, gain: 0.7 }
     if (!v) continue

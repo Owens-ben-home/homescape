@@ -86,6 +86,8 @@ interface Window {
     }>
     /** The item's group in the scene: its id (changes when rebuilt), world height, visible or not */
     itemObject: (id: string) => Promise<{ uuid: string; y: number; visible: boolean } | null>
+    /** Whether an item was drawn as on, as the scene decided (model/activity.ts > visualDebug); null for an unknown item */
+    visualOn: (id: string) => Promise<boolean | null>
     /** Open state of cabinets (scene/bins.ts): cabinet id -> open */
     bins: () => Promise<Record<string, boolean>>
     /** Flight between homes (scene/HomeFlight.tsx): stage, number of finished flights, measurements of the last one */

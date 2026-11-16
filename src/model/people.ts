@@ -1,4 +1,5 @@
 import type { Entities, HaRegistry, HassEntity } from '@/ha/types'
+import { ruleActive, ruleEntities } from './activity'
 import { bindingsOf, itemLightIds } from './bindings'
 import { isActive } from '@/ha/derive'
 import { CATALOG, sizeOf } from './catalog'
@@ -507,6 +508,8 @@ export function desksInUse(level: Level, entities: Entities, registry: HaRegistr
     const on = pings.length ? pings.filter((id) => entities[id].state === 'on') : it.kind === 'computer' && it.entityId && entities[it.entityId]?.state === 'on' ? [it.entityId] : []
     const roomId = roomAt(level.rooms, it.x, it.z)?.id
     if (on.length && roomId) out.push({ roomId, at: Math.max(...on.map(changedAt)), anchor: { x: it.x, z: it.z } })
+    // A computer or monitor running by an activity rule (a power draw) counts as a desk in use too
+    else if (roomId && ruleActive(it, entities)) out.push({ roomId, at: Math.max(0, ...ruleEntities(it).map(changedAt)), anchor: { x: it.x, z: it.z } })
   }
   for (const e of Object.values(entities)) {
     if (!isPing(e) || e.state !== 'on' || seen.has(e.entity_id)) continue
@@ -800,7 +803,7 @@ function planNamed(input: PeopleInput, people: NamedPerson[]): PeoplePlan {
 }
 
 /** Whether the TV is on (player or plug; not off, standby or unavailable) */
-const tvIsOn = (tv: Item, entities: Entities) => bindingsOf(tv).some((id) => entities[id] && !['off', 'standby', 'unavailable', 'unknown'].includes(entities[id].state))
+const tvIsOn = (tv: Item, entities: Entities) => ruleActive(tv, entities) || bindingsOf(tv).some((id) => entities[id] && !['off', 'standby', 'unavailable', 'unknown'].includes(entities[id].state))
 const tvOn = (level: Level, room: Room, entities: Entities) => itemsIn(level, room).some((i) => i.kind === 'tv' && tvIsOn(i, entities))
 
 /**

@@ -40,7 +40,7 @@
     "check:controls": "node tools/controls-check.mjs",
     "check:home": "node tools/home-check.mjs",
     "perf": "node tools/perf-check.mjs",
-    "check": "node tools/controls-check.mjs && node tools/home-check.mjs && node tools/world-check.mjs && node tools/interior-check.mjs && node tools/outdoor-check.mjs && node tools/pets-check.mjs && node tools/sound-check.mjs && node tools/demo-check.mjs && node tools/street-check.mjs && node tools/building-check.mjs && node tools/apartment-check.mjs && node tools/loft-check.mjs && node tools/building-view-check.mjs && node tools/presence-check.mjs && node tools/sync-check.mjs && node tools/data-safety-check.mjs && node tools/weather-check.mjs && node tools/dashboard-check.mjs",
+    "check": "node tools/controls-check.mjs && node tools/home-check.mjs && node tools/world-check.mjs && node tools/interior-check.mjs && node tools/outdoor-check.mjs && node tools/pets-check.mjs && node tools/sound-check.mjs && node tools/demo-check.mjs && node tools/street-check.mjs && node tools/building-check.mjs && node tools/apartment-check.mjs && node tools/loft-check.mjs && node tools/building-view-check.mjs && node tools/presence-check.mjs && node tools/activity-check.mjs && node tools/sync-check.mjs && node tools/data-safety-check.mjs && node tools/weather-check.mjs && node tools/dashboard-check.mjs",
     "check:world": "node tools/world-check.mjs",
     "check:interior": "node tools/interior-check.mjs",
     "check:outdoor": "node tools/outdoor-check.mjs",
@@ -57,6 +57,7 @@
     "check:data": "node tools/data-safety-check.mjs",
     "check:weather": "node tools/weather-check.mjs",
     "check:dashboard": "node tools/dashboard-check.mjs",
+    "check:activity": "node tools/activity-check.mjs",
     "media": "node tools/readme-media.mjs",
     "promo": "node tools/promo-video.mjs"
   },

@@ -240,6 +240,19 @@ export type ItemKind =
   | 'dogHouse'
   | 'petToy'
 
+/** One activity signal: an entity compared with a number or a list of states, optionally held for a while after the last match. */
+export interface ActivityRule {
+  entity: string
+  /** Numeric state greater than this (power in W, current in A...) */
+  above?: number
+  /** Numeric state less than this */
+  below?: number
+  /** String states that match ('playing', 'on'...) */
+  state?: string[]
+  /** Keeps the item on for this many seconds after the last match (a washer pauses between cycles) */
+  holdSeconds?: number
+}
+
 export interface Item {
   id: string
   kind: ItemKind
@@ -258,6 +271,8 @@ export interface Item {
   entityId?: string | null
   /** Extra entities: any HA entity (temperature, humidity, plug, lock, battery...). Shown and controlled on the card. */
   extras?: string[]
+  /** Extra signals that mean this device is running (model/activity.ts). Any one match turns the item on. */
+  activeWhen?: ActivityRule[]
   /** Door/window hinge side, looking at the door from inside the room (default left) */
   hinge?: 'left' | 'right'
   /** Which way the door/window opens: into its room (in, default) or to the other side of the wall (out / neighbor room) */
