@@ -267,6 +267,9 @@ function groundFloor(): Level {
   put('nas', 5.8, 9.62, 0, bind('switch.us_nas'))
   wall(office, 'right', 8.1, 'acUnit', bind('climate.us_office_ac', 'sensor.us_office_temperature'))
   wall(office, 'front', 3.75, 'window', { variant: 'zebra', len: 1.6, body: '#ffffff' })
+  // Timber post and beam in the family room
+  put('column', -6.6, 1.0, 0)
+  put('beam', -4.1, 1.0, 0, { len: 5 })
   put('trackLight', 3.75, 8.6, 0, { ...bind('light.us_office_track'), len: 1.8 })
   put('plant', 2, 9.55, 0)
   wall(office, 'front', 5.3, 'motionSensor', bind('binary_sensor.us_office_motion'))
