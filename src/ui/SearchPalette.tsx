@@ -1,30 +1,23 @@
 import { DoorOpen, Power, Search, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { canToggle, toggle } from '@/ha/actions'
-import { friendlyName, isActive, stateLabel } from '@/ha/derive'
+import { isActive, stateLabel } from '@/ha/derive'
 import { useHa } from '@/ha/store'
-import { bindingsOf } from '@/model/bindings'
-import { CATALOG, GROUP_LABEL } from '@/model/catalog'
+import { CATALOG } from '@/model/catalog'
 import { inRoom } from '@/model/geometry'
 import { levelName, useLayout } from '@/model/layoutStore'
 import type { Item, Level, Room } from '@/model/types'
-import { lower, t } from '@/i18n'
+import { t } from '@/i18n'
 import { useView } from '@/scene/camera'
 import { itemName } from './Bindings'
 import { KIND_ICON } from './kindIcons'
+import { fold, itemSearchText } from './searchText'
 
 /*
  * Quick search: opens with ⌘K / Ctrl+K or /. Searches the items on every floor (name, kind, group, the bound entity's name
  * and id) and the rooms. The power button on a row toggles the item directly; clicking a row (or Enter) switches to its
  * floor, selects the item and moves the camera to its room.
  */
-
-/** Lower case without accents, so "lamba" finds "Lâmba" and "cafe" finds "Café"; the dotless i matches i */
-const fold = (text: string) =>
-  lower(text)
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .replace(/\u0131/g, 'i')
 
 type Hit = { type: 'item'; item: Item; level: Level; room?: Room } | { type: 'room'; room: Room; level: Level }
 
@@ -64,9 +57,7 @@ export default function SearchPalette() {
     for (const level of layout.levels) {
       for (const room of level.rooms) if (fold(room.name).includes(q)) out.push({ type: 'room', room, level })
       for (const item of level.items) {
-        const ids = bindingsOf(item)
-        const text = [itemName(item, item.entityId ? entities[item.entityId] : undefined), CATALOG[item.kind].label, GROUP_LABEL[CATALOG[item.kind].group], ...ids, ...ids.map((id) => friendlyName(entities[id]))].join(' ')
-        if (fold(text).includes(q)) out.push({ type: 'item', item, level, room: level.rooms.find((r) => inRoom(r, item.x, item.z)) })
+        if (fold(itemSearchText(item, entities)).includes(q)) out.push({ type: 'item', item, level, room: level.rooms.find((r) => inRoom(r, item.x, item.z)) })
       }
     }
     // Bound items first

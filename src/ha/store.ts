@@ -50,6 +50,8 @@ interface HaState {
   settings: ConnSettings
   /** Short-lived notice (service error etc.) */
   notice: string | null
+  /** Whether the notice is an error (a failed command): the native bridge reports it that way (native/bridge.ts) */
+  noticeError: boolean
   /** Shown inside the Home Assistant frontend, on its connection (ha/embed.ts): no sign-in, no connection settings */
   embedded: boolean
 
@@ -57,7 +59,8 @@ interface HaState {
   connectDemo: () => Promise<void>
   connectLive: (hassUrl: string, token?: string | null, remember?: boolean) => Promise<void>
   disconnect: () => Promise<void>
-  call: (domain: string, service: string, data: Record<string, unknown>) => Promise<void>
+  /** Sends the command; false when it failed (a notice says why) */
+  call: (domain: string, service: string, data: Record<string, unknown>) => Promise<boolean>
   clearNotice: () => void
   /** Attaches a source (demo, live, or a fake live source for tests) */
   attach: (source: HaSource) => Promise<void>
@@ -136,6 +139,7 @@ export const useHa = create<HaState>()((set, get) => {
     registry: null,
     settings: readSettings(),
     notice: null,
+    noticeError: false,
     embedded: false,
 
     boot: async () => {
@@ -189,15 +193,17 @@ export const useHa = create<HaState>()((set, get) => {
       // The sample home's entities are local (never sent to the real Home Assistant)
       const ids = Array.isArray(data.entity_id) ? (data.entity_id as string[]) : typeof data.entity_id === 'string' ? [data.entity_id] : []
       const source = overlay && ids.length && ids.every((id) => overlay!.entities[id]) ? overlay.source : get().source
-      if (!source) return
+      if (!source) return false
       try {
         await source.callService(domain, service, data)
+        return true
       } catch (err) {
-        set({ notice: t('Could not send the command: {error}', { error: errorText(err) }) })
+        set({ notice: t('Could not send the command: {error}', { error: errorText(err) }), noticeError: true })
+        return false
       }
     },
 
-    clearNotice: () => set({ notice: null }),
+    clearNotice: () => set({ notice: null, noticeError: false }),
     attach,
   }
 })
