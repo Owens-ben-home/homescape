@@ -13,8 +13,8 @@ import type { Layout } from './types'
 
 /** Distance between two window centers of the facade (m): a 0.9 m pier and a 2.2 m opening in the real building */
 export const BAY = 3.1
-/** Bays of the block before the unit's own bays (the short end, where the corner street is) and after them */
-export const BAYS_SHORT = 2
+/** Bays of the block before the unit's own bays (the short end, where the corner street is; the unit's first bay is usually partly its own) and after them */
+export const BAYS_SHORT = 1
 export const BAYS_LONG = 7
 /** Depth of the block behind the facade (m) */
 export const BLOCK_DEPTH = 30
@@ -85,8 +85,17 @@ export function buildingPlan(layout: Layout | null | undefined): BuildingPlan | 
   // The facade plane is the outer face of the unit's exterior wall on that side (walls are centered on the room boundary)
   const plane = Math.max(...os) + WALL_T / 2
   const unitDepth = plane - Math.min(...os)
-  const nUnit = Math.max(1, Math.round((hi - lo) / BAY))
-  const start = (lo + hi) / 2 - (nUnit * BAY) / 2 - BAYS_SHORT * BAY
+  // The grid follows the unit's windows: bay centers sit on the middle of the windows of that facade (the plan's windows come in
+  // pairs per bay), otherwise the unit's extent is centered on its bays
+  const wins = layout.levels
+    .flatMap((l) => l.items)
+    .filter((it) => it.kind === 'window' && out[0] * it.x + out[1] * it.z > Math.max(...os) - 0.6)
+    .map((it) => along[0] * it.x + along[1] * it.z)
+  const inBay = (v: number) => ((v % BAY) + BAY) % BAY
+  const phase = wins.length ? wins.reduce((n, v) => n + inBay(v), 0) / wins.length - BAY / 2 : inBay((lo + hi) / 2) - BAY / 2
+  const first = phase + Math.floor((lo - phase) / BAY) * BAY
+  const nUnit = Math.max(1, Math.ceil((hi - first - 0.01) / BAY))
+  const start = first - BAYS_SHORT * BAY
   const bays = BAYS_SHORT + nUnit + BAYS_LONG
   const length = bays * BAY
   const depth = Math.max(BLOCK_DEPTH, unitDepth + 8)

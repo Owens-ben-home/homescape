@@ -62,7 +62,7 @@ interface Window {
     sceneStructure: () => Promise<{
       roofs: number
       ground: number | null
-      building: { top: number; floors: number; bays: number; side: string; length: number; depth: number; plateTop: number | null; panes: number } | null
+      building: { top: number; floors: number; bays: number; side: string; length: number; depth: number; origin: [number, number]; along: [number, number]; out: [number, number]; plateTop: number | null; panes: number } | null
       street: { y: number; sidewalk: number; width: number } | null
       backdrop: { layers: number; visible: boolean } | null
     } | null>

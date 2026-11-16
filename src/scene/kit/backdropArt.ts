@@ -264,30 +264,30 @@ export function bridgePano() {
 
 /** The nearest layer: a row of brick low-rises with window grids and fire escapes on the facade side, rooftops elsewhere, park trees. */
 export function lowrisePano() {
-  return panorama('lowrise', 62, 44, 2048, 256, (c, light) => {
+  return panorama('lowrise', 85, 36, 2048, 256, (c, light) => {
     const rnd = rng(77)
-    const bricks = ['#8e5642', '#97604a', '#84503d', '#9a6a52', '#7d4a3a']
+    const bricks = ['#8a5a49', '#7a4535', '#84503f', '#7d5648', '#704136']
     const grey = ['#8b8f96', '#9a9ca0', '#7c8088']
     for (let a = -180, i = 0; a < 180; i++) {
       const view = a > -75 && a < 40
-      const w = 9 + rnd() * 9
+      const w = 7 + rnd() * 7
       // a gap (a side street) at +10..+26 so the bridges show through
       if (view && a + w > 8 && a < 24) {
         a = 24
         continue
       }
-      const h = view ? 12 + Math.floor(rnd() * 3) * 3.2 : 7 + rnd() * 8
+      const h = view ? 9 + Math.floor(rnd() * 2) * 2.8 : 6 + rnd() * 5
       const tone = view ? bricks[i % bricks.length] : rnd() < 0.5 ? bricks[i % bricks.length] : grey[i % grey.length]
       if (!light) {
         block(c, a, a + w, 0, h, tone)
         block(c, a, a + w, h, h + 0.9, '#5a4a44')
         // window grid
-        const cols = Math.max(2, Math.round(w / 2.8))
+        const cols = Math.max(2, Math.round(w / 2.2))
         const floors = Math.max(2, Math.floor(h / 3.2))
         for (let f = 0; f < floors; f++)
           for (let k = 0; k < cols; k++) {
             const a0 = a + ((k + 0.25) * w) / cols
-            block(c, a0, a0 + (w / cols) * 0.5, f * 3.2 + 1, f * 3.2 + 2.9, '#2a2f38')
+            block(c, a0 + 0.1, a0 + (w / cols) * 0.38, f * 3.2 + 1.2, f * 3.2 + 2.6, '#3a3d46')
           }
         // fire escape on some: a zigzag of dark strokes on one bay column
         if (view && i % 2 === 0) {
@@ -299,14 +299,14 @@ export function lowrisePano() {
         }
         if (!view && rnd() < 0.3) block(c, a + w * 0.3, a + w * 0.45, h + 0.9, h + 4.5, '#6f4a33')
       } else {
-        const cols = Math.max(2, Math.round(w / 2.8))
+        const cols = Math.max(2, Math.round(w / 2.2))
         const floors = Math.max(2, Math.floor(h / 3.2))
         const r2 = rng(i * 13 + 5)
         for (let f = 0; f < floors; f++)
           for (let k = 0; k < cols; k++) {
             if (r2() > 0.3) continue
             const a0 = a + ((k + 0.25) * w) / cols
-            block(c, a0, a0 + (w / cols) * 0.5, f * 3.2 + 1, f * 3.2 + 2.9, WARM[Math.floor(r2() * WARM.length)])
+            block(c, a0 + 0.1, a0 + (w / cols) * 0.38, f * 3.2 + 1.2, f * 3.2 + 2.6, WARM[Math.floor(r2() * WARM.length)])
           }
       }
       a += w + (rnd() < 0.35 ? 1.5 : 0.1)
@@ -315,7 +315,7 @@ export function lowrisePano() {
     if (!light) {
       const tr = rng(5)
       for (let a = 8; a < 120; a += 2 + tr() * 3.5) {
-        const h = 6 + tr() * 6
+        const h = 5 + tr() * 4
         block(c, a, a + 0.3, 0, h * 0.5, '#5b4636')
         c.g.fillStyle = tr() < 0.5 ? '#5f8a58' : '#6f9a62'
         c.g.beginPath()

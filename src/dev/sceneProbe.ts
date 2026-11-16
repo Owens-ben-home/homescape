@@ -38,6 +38,9 @@ interface BuildingTag {
   length: number
   depth: number
   top: number
+  origin: [number, number]
+  along: [number, number]
+  out: [number, number]
 }
 interface StreetTag {
   y: number

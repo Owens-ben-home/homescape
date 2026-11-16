@@ -50,7 +50,7 @@ export function Building() {
   if (!plan) return null
   const top = plan.floors * FLOOR_H
   return (
-    <group position-y={-e0 * FLOOR_H} userData={{ building: { side: plan.side, floors: plan.floors, bays: plan.bays, length: plan.length, depth: plan.depth, top } }}>
+    <group position-y={-e0 * FLOOR_H} userData={{ building: { side: plan.side, floors: plan.floors, bays: plan.bays, length: plan.length, depth: plan.depth, top, origin: plan.origin, along: plan.along, out: plan.out } }}>
       <group position={[plan.origin[0], 0, plan.origin[1]]} rotation-y={plan.rotY}>
         <Block plan={plan} />
         <Street plan={plan} />
