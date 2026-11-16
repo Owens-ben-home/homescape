@@ -5,7 +5,9 @@ import * as THREE from 'three'
 import { play } from '@/audio/engine'
 import { passDoors } from './doorTraffic'
 import { useHa } from '@/ha/store'
-import { activeLevel, useLayout } from '@/model/layoutStore'
+import { t } from '@/i18n'
+import { inRect } from '@/model/geometry'
+import { activeLevel, useApartment, useLayout } from '@/model/layoutStore'
 import {
   ACTION_LABEL,
   buildPetGrid,
@@ -22,6 +24,7 @@ import {
   pickVisitor,
   planVisitor,
   randomSpot,
+  randomSpotIn,
   tickNeeds,
   visitorAt,
   VISITOR_LABEL,
@@ -37,6 +40,7 @@ import {
   type VisitorPlan,
   type VisitorView,
 } from '@/model/pets'
+import { petDrives, regionCentre, resolveRegion, type PetDrive } from '@/model/presence'
 import type { Item, Level } from '@/model/types'
 import { useQuick } from '@/ui/quickState'
 import { clickSlop, pointerKind, useView } from './camera'
@@ -48,6 +52,7 @@ import { PetBody } from './PetBody'
 import { animatePet, restState, type PetAnimState, type PetRefs } from './petAnim'
 import { usePetLive, petKey } from './petLive'
 import { petsDebug } from './petsDebug'
+import { dragDown, dragMove, dragUp, petTarget, presenceDrag, usePresenceUi } from './presenceState'
 import { birdParts, butterflyParts, CAT_LOOKS, DOG_LOOKS, FRAME, petLook, petMaterial, squirrelParts, type BirdKind, type PetLook } from './petModel'
 import { rng } from './kit/primitives'
 
@@ -65,6 +70,9 @@ import { rng } from './kit/primitives'
  *   and the quick toggle pill keep working: only the animal's invisible hit box takes the event and stops it there.
  * - In walk mode the dog runs to the player; the cat rubs against them or walks away.
  * - Outside, every 30-90 s a visitor (birds, the neighbor's cat, a stray dog, butterflies, a squirrel) passes the house.
+ * - Presence (model/presence.ts): a cat or dog item whose main entity is a room sensor stays in the room (or zone) the sensor reports,
+ *   keeping its naps, sniffing and following people inside it; when the room changes it walks there; away hides it in apartment
+ *   mode. In view mode it can be picked up and dropped into another room (scene/presenceState.ts > dropAt).
  * Frames: every frame while walking, jumping or reacting; at the ambient rate when idle (24 fps, half when all are asleep;
  * none in light mode). They stay out of the shadow map (cheap), with a contact shadow under the feet.
  */
@@ -266,7 +274,12 @@ interface World {
   mode: PetMode
   day: boolean
   feeding: boolean
+  /** Pets driven by a room sensor (presence), by item id */
+  drives: Map<string, PetDrive>
 }
+
+/** Signature of a drive: where the pet belongs (the pet rethinks when it changes) */
+const driveKey = (d: PetDrive | undefined) => (d ? (d.away ? 'away' : d.region ? `${d.region.room.id}|${d.region.rects.map((r) => `${r.x},${r.z},${r.w},${r.d}`).join(';')}` : '') : '')
 
 /**
  * Bubbles of the sleepy bark and the double bark, taken from chooseReaction itself so the sound choice does not depend on
@@ -329,6 +342,24 @@ export function Pets() {
   const day = hour == null && sun ? sun === 'above_horizon' : h >= 7 && h < 19
   const feeding = useMemo(() => (level ? feedingNow(level, entities, now) : false), [level, entities, now])
   const pets = useMemo(() => (level ? level.items.filter((i) => i.kind === 'cat' || i.kind === 'dog').slice(0, MAX_PETS) : []), [level])
+  // Presence: pets whose main entity is a room sensor (a drag correction not confirmed yet counts as the sensor's answer)
+  const presence = useLayout((s) => s.layout?.presence)
+  const apartment = useApartment() !== null
+  const pending = usePresenceUi((s) => s.pending)
+  const rawDrives = useMemo(() => {
+    if (!level) return []
+    const out: PetDrive[] = []
+    for (const d of petDrives(level, presence, entities)) {
+      const fix = pending[petTarget(d.itemId)]
+      const region = fix ? resolveRegion(level, presence, fix.value) : d.region
+      // Away only matters in an apartment (where nobody is drawn outside); a house keeps its pet roaming
+      if (fix ? !region : d.away && !apartment) continue
+      out.push(fix ? { ...d, region, away: false } : d)
+    }
+    return out
+  }, [level, presence, entities, pending, apartment])
+  const driveSig = rawDrives.map((d) => `${d.itemId}:${driveKey(d)}`).join('\n')
+  const drives = useMemo(() => new Map(rawDrives.map((d) => [d.itemId, d])), [driveSig])
   const live = mode === 'view' && Boolean(level) && pets.length > 0
   useEffect(() => {
     petsDebug.mode = petMd
@@ -342,13 +373,13 @@ export function Pets() {
   useEffect(() => () => usePetLive.getState().set([]), [])
   return (
     <>
-      {live && level && <PetsLive level={level} pets={pets} mode={petMd} day={day} feeding={feeding} />}
+      {live && level && <PetsLive level={level} pets={pets} mode={petMd} day={day} feeding={feeding} drives={drives} />}
       {mode === 'view' && level && !lite && !dashboard && (level.elevation ?? 0) === 0 && <Visitors level={level} night={petMd === 'night' || !day} />}
     </>
   )
 }
 
-function PetsLive({ level, pets, mode, day, feeding }: { level: Level; pets: Item[]; mode: PetMode; day: boolean; feeding: boolean }) {
+function PetsLive({ level, pets, mode, day, feeding, drives }: { level: Level; pets: Item[]; mode: PetMode; day: boolean; feeding: boolean; drives: Map<string, PetDrive> }) {
   const agents = useRef(new Map<string, Agent>())
   const refs = useRef(new Map<string, PetRefs>())
   const proxies = useRef(new Map<string, THREE.Object3D>())
@@ -359,7 +390,7 @@ function PetsLive({ level, pets, mode, day, feeding }: { level: Level; pets: Ite
   const fps = useView((s) => s.fps)
   const grids = useMemo(() => ({ cat: buildPetGrid(level, 'cat'), dog: buildPetGrid(level, 'dog') }), [level])
   const places = useMemo(() => ({ cat: petPlaces(level, 'cat'), dog: petPlaces(level, 'dog') }), [level])
-  const world = useRef<World>({ level, grids, places, mode, day, feeding })
+  const world = useRef<World>({ level, grids, places, mode, day, feeding, drives })
   const ambient = useRef<'none' | 'slow' | 'full'>('none')
 
   // sync the animals with the items (a new one sits at its home, a moved one gets a new home)
@@ -389,11 +420,15 @@ function PetsLive({ level, pets, mode, day, feeding }: { level: Level; pets: Ite
   useEffect(() => {
     const w = world.current
     const changed = w.mode !== mode || (feeding && !w.feeding) || w.level !== level
-    world.current = { level, grids, places, mode, day, feeding }
-    if (!changed) return
+    const before = w.drives
+    world.current = { level, grids, places, mode, day, feeding, drives }
+    // A pet whose room changed (its sensor, or a drag correction) stops what it does and walks there
+    const moved = new Set([...agents.current.keys()].filter((id) => driveKey(before.get(id)) !== driveKey(drives.get(id))))
+    if (!changed && !moved.size) return
     const now = performance.now() / 1000
     for (const a of agents.current.values()) {
-      if (a.goal?.action === 'sleep' && mode !== 'home') continue
+      if (!moved.has(a.id) && a.goal?.action === 'sleep' && mode !== 'home') continue
+      if (!changed && !moved.has(a.id)) continue
       if (a.react || a.hop) {
         a.until = Math.min(a.until, now)
         continue
@@ -404,7 +439,7 @@ function PetsLive({ level, pets, mode, day, feeding }: { level: Level; pets: Ite
       a.until = now + a.rnd() * 2
     }
     invalidate()
-  }, [level, grids, places, mode, day, feeding, invalidate])
+  }, [level, grids, places, mode, day, feeding, drives, invalidate])
 
   /* ----- thinking: the next task and path ----- */
   const think = (a: Agent, t: number, forced?: PetGoal) => {
@@ -415,21 +450,34 @@ function PetsLive({ level, pets, mode, day, feeding }: { level: Level; pets: Ite
     const taken = [...agents.current.values()].filter((o) => o !== a && o.goal).map((o) => ({ x: o.goal!.x, z: o.goal!.z }))
     const player = fps && useView.getState().fps ? { x: fpsDebug.x, z: fpsDebug.z } : null
     const room = gridRoom(grid, a.x, a.z)
+    // Presence: pinned to the room (or zone) its sensor reports; everything below stays inside it
+    const reg = w.drives.get(a.id)?.region?.rects ?? null
+    const regionPoint = () => {
+      if (!reg) return null
+      const c = regionCentre(w.drives.get(a.id)!.region!)
+      return randomSpotIn(grid, a.rnd, reg, outdoor) ?? nearestFree(grid, c.x, c.z, { room: gridRoom(grid, c.x, c.z), outdoor, max: 1.5 })
+    }
     // Roaming, so pets do not stay in one room: one in five picks a random spot in the current room, the rest a random
     // spot in another room of the home
     const others = grid.rooms.map((_, i) => i).filter((i) => i !== room)
     const wander = () => {
+      if (reg) return regionPoint()
       if (room >= 0 && a.rnd() < 0.2) return randomSpot(grid, a.rnd, false, room) ?? randomSpot(grid, a.rnd, false)
       const target = others.length ? others[Math.floor(a.rnd() * others.length)] : undefined
       return (target != null ? randomSpot(grid, a.rnd, false, target) : null) ?? randomSpot(grid, a.rnd, false)
     }
     let goal: PetGoal | null = forced ?? null
+    // Not in that room yet: walks there first
+    if (!goal && reg && !reg.some((r) => inRect(r, a.x, a.z))) {
+      const p = regionPoint()
+      if (p) goal = { action: 'wander', x: p.x, z: p.z, y: 0, rot: null, pose: 'stand', stay: 2 + a.rnd() * 3, pace: a.species === 'dog' ? 'trot' : 'walk' }
+    }
     let path: { x: number; z: number }[] | null = null
     for (let tries = 0; tries < 4; tries++) {
       goal ??= chooseGoal({
         species: a.species,
         places: w.places[a.species],
-        home: a.home,
+        home: reg && !reg.some((r) => inRect(r, a.home.x, a.home.z)) ? { ...regionCentre(w.drives.get(a.id)!.region!), rot: a.home.rot } : a.home,
         pos: { x: a.x, z: a.z },
         needs: a.needs,
         mode: w.mode,
@@ -442,6 +490,7 @@ function PetsLive({ level, pets, mode, day, feeding }: { level: Level; pets: Ite
         wander,
         sillOk: (p) => sillVisible(p),
         outdoor,
+        region: reg,
         rnd: a.rnd,
       })
       path = findPath(grid, { x: a.x, z: a.z }, { x: goal.x, z: goal.z }, outdoor)
@@ -575,6 +624,17 @@ function PetsLive({ level, pets, mode, day, feeding }: { level: Level; pets: Ite
         const ag = agents.current.get(id)
         if (ag) pokeRef.current(ag, performance.now() / 1000)
       },
+      down: (id, e) => {
+        const ag = agents.current.get(id)
+        const drive = world.current.drives.get(id)
+        if (!ag || !drive) return
+        const it = world.current.level.items.find((i) => i.id === id)
+        dragDown(e, { key: petTarget(id), entity: drive.entity, name: it?.name?.trim() || (ag.species === 'cat' ? t('Cat') : t('Dog')), kind: 'pet' }, { x: ag.x, z: ag.z })
+      },
+      over: (id, on) => {
+        if (on && world.current.drives.has(id)) usePresenceUi.getState().setHover(petTarget(id))
+        else if (!on) usePresenceUi.getState().setHover(null)
+      },
     }),
     [],
   )
@@ -595,6 +655,31 @@ function PetsLive({ level, pets, mode, day, feeding }: { level: Level; pets: Ite
       const sc = a.look.scale
       const prevX = a.x
       const prevZ = a.z
+      // Presence: a pet whose sensor says away is not in the apartment at all
+      const away = Boolean(w.drives.get(a.id)?.away)
+      const body = refs.current.get(a.id)
+      if (body) body.root.visible = !away
+      if (away) {
+        const bb = bubbles.current.get(a.id)
+        if (bb) bb.group.visible = false
+        out.push({ id: a.id, species: a.species, variant: a.variant, x: a.x, z: a.z, y: a.y, roomId: null, action: null, label: '', pose: 'stand', moving: false, react: null, bubble: null, needs: { ...a.needs }, heading: a.heading, hidden: true })
+        continue
+      }
+      // Presence: picked up, it follows the pointer until it is dropped
+      const carried = presenceDrag.key != null && presenceDrag.key === petTarget(a.id)
+      if (carried) {
+        a.x = presenceDrag.x
+        a.z = presenceDrag.z
+        a.y = 0
+        a.path = []
+        a.hop = null
+        a.react = null
+        a.goal = null
+        a.arrived = true
+        a.until = t + 1.2
+        a.roomIdx = -1
+        busy = true
+      }
       // the next task
       if (!a.react && !a.hop && a.arrived && t >= a.until) {
         if (a.goal) a.last = a.goal.action
@@ -609,7 +694,7 @@ function PetsLive({ level, pets, mode, day, feeding }: { level: Level; pets: Ite
       let blink = false
       let lookAtCam = false
       const g = a.goal
-      a.extraY = 0
+      a.extraY = carried ? 0.14 : 0
 
       // the path is refreshed when the followed person or player moved (the path may become empty)
       if (!a.react && !a.hop && g?.follow && a.path.length && t > a.followAt) retarget(a, g, t)
@@ -924,6 +1009,7 @@ function PetsLive({ level, pets, mode, day, feeding }: { level: Level; pets: Ite
       }
       out.push({
         id: a.id,
+        hidden: false,
         species: a.species,
         variant: a.variant,
         x: a.x,
@@ -1036,6 +1122,10 @@ interface NpcHooks {
   proxy: (id: string, o: THREE.Object3D | null) => void
   bubble: (id: string, b: { group: THREE.Sprite; mat: THREE.SpriteMaterial } | null) => void
   poke: (id: string) => void
+  /** Presence: pointer down on a pet driven by a room sensor (starts a drag); false when it is not */
+  down: (id: string, e: ThreeEvent<PointerEvent>) => void
+  /** Presence: the pointer is over a pet driven by a room sensor (its card) */
+  over: (id: string, on: boolean) => void
 }
 
 const PROXY = { cat: { size: [0.24, 0.34, 0.62] as const, y: 0.19 }, dog: { size: [0.36, 0.62, 1.05] as const, y: 0.36 } }
@@ -1061,14 +1151,21 @@ function PetNpc({ id, look, hooks }: { id: string; look: PetLook; hooks: NpcHook
             if (e.delta > clickSlop(pointerKind.last)) return
             hooks.poke(id)
           }}
+          onPointerDown={(e) => hooks.down(id, e)}
+          onPointerMove={dragMove}
+          onPointerUp={dragUp}
           onPointerOver={(e) => {
             e.stopPropagation()
             if (document.pointerLockElement) return
             setHover(true)
+            hooks.over(id, true)
             // The quick pill of an item on the way must not cover the animal (the pointer came to the animal, not to the pill)
             useQuick.getState().dismiss()
           }}
-          onPointerOut={() => setHover(false)}
+          onPointerOut={() => {
+            setHover(false)
+            hooks.over(id, false)
+          }}
         >
           <boxGeometry args={[...P.size]} />
           <meshBasicMaterial visible={false} />

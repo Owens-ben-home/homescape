@@ -4,6 +4,7 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import { floorNumber, t } from '@/i18n'
 import { asMain, foldTvBacklights, isBound, primaryFirst, withBinding, withoutBinding } from './bindings'
 import { clampFloor, shiftLevels } from './apartment'
+import { cleanPresence, type PresenceSpec } from './presence'
 import { connectRooms } from './doors'
 import { areaContents, inRoom, rectsOf, settleWallItems, shiftRoom } from './geometry'
 import { dropLoneGroups, groupMates } from './groups'
@@ -210,6 +211,11 @@ interface LayoutState {
    * every level so the lowest sits at elevation floor - 1; null turns it off and shifts them back so the lowest is 0. Undoable.
    */
   setApartment: (next: { floor: number } | null) => void
+  /**
+   * Presence settings (Layout.presence: the named people and the room value map); null or an empty object removes them. One undo
+   * step. Pass the whole next value: the people editor builds it from `layout.presence`.
+   */
+  setPresence: (next: PresenceSpec | null) => void
   /** Deletes a level with everything on it (not the last one). */
   deleteLevel: (id: string) => void
 }
@@ -600,6 +606,14 @@ export const useLayout = create<LayoutState>()(
           const floor = clampFloor(next.floor)
           if (was?.floor === floor) return
           set({ layout: { ...rest, levels: moveLevels(layout.levels, floor - 1), apartment: { floor } }, past: [...past, layout].slice(-HISTORY), future: [] })
+        },
+        setPresence: (next) => {
+          const { layout, past } = get()
+          if (!layout) return
+          const { presence: was, ...rest } = layout
+          const clean = cleanPresence(next)
+          if (JSON.stringify(clean ?? null) === JSON.stringify(was ?? null)) return
+          set({ layout: clean ? { ...rest, presence: clean } : rest, past: [...past, layout].slice(-HISTORY), future: [] })
         },
         deleteLevel: (id) => {
           const { layout, past, levelId } = get()

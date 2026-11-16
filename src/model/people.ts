@@ -3,8 +3,9 @@ import { bindingsOf, itemLightIds } from './bindings'
 import { isActive } from '@/ha/derive'
 import { CATALOG, sizeOf } from './catalog'
 import { counterSink } from './counter'
-import { APERTURE_INSET, besideDoor, doorSides, exteriorSide, frontDoor, inRoom, isOutdoor, rectsOf, roomAt } from './geometry'
+import { APERTURE_INSET, besideDoor, doorSides, exteriorSide, frontDoor, inRect, inRoom, isOutdoor, rectsOf, roomAt } from './geometry'
 import { buildPetGrid, findPath, gridRoom, isFree, nearestFree, type PetGrid } from './pets'
+import { namedPeople, presenceOpacity, readRoomSensor, regionCentre, resolveRegion, type NamedPerson, type PresenceSpec, type Region } from './presence'
 import type { Item, ItemKind, Level, Room } from './types'
 
 /*
@@ -37,6 +38,16 @@ export interface Spot {
   activity?: Activity
   /** Height the hand reaches to when pressing a device (m) */
   reach?: number
+  /** Presence: the plan author's key of the named person this spot belongs to (absent for the anonymous simulation) */
+  who?: string
+  /** Presence: the person's name */
+  name?: string
+  /** Presence: how sure the room sensor is (0-1); absent when it does not say or the person is simulated */
+  confidence?: number | null
+  /** Presence: how solid the avatar is drawn (1 = opaque; below the low confidence mark, or for a guessed or held value, it is faded) */
+  fade?: number
+  /** Presence: the outfit (index into scene/humanModel > LOOKS) and the slot of the avatar */
+  look?: number
 }
 export type PeopleMode = 'home' | 'sleep' | 'away'
 export interface PeoplePlan {
@@ -313,23 +324,40 @@ function outsideSpots(level: Level, n: number): Spot[] {
  * switched on, the nearest seat within 1.6 m of it (desk lamp: the desk's chair, floor lamp: the armchair next to it);
  * else a seat, then in front of the counter / washbasin, else the middle.
  */
-function activeSpot(level: Level, room: Room, used: Set<string>, anchor?: { x: number; z: number }, turn = 0, entities?: Entities): Spot {
-  const wc = toiletSpots(level, room).find((s) => !used.has(key(s)))
+function activeSpot(level: Level, room: Room, used: Set<string>, anchor?: { x: number; z: number }, turn = 0, entities?: Entities, region?: Region): Spot {
+  // Presence: a person placed in a zone of a bigger room only uses spots inside that zone
+  const zone = region?.area
+  const ok = zone ? (s: Spot) => inRect(zone, s.x, s.z) : () => true
+  const wc = toiletSpots(level, room).find((s) => !used.has(key(s)) && ok(s))
   if (wc) return wc
   // With the TV on, the person in the room sits facing it
-  const tv = entities && tvSeats(level, room, entities).find((s) => !used.has(key(s)))
+  const tv = entities && tvSeats(level, room, entities).find((s) => !used.has(key(s)) && ok(s))
   if (tv) return tv
-  const near = anchor && turn === 0 && seatNear(level, room, used, anchor)
+  const near = anchor && turn === 0 && (!zone || inRect(zone, anchor.x, anchor.z)) && seatNear(level, room, used, anchor, ok)
   if (near) return near
   // Moves around the room instead of doing just one thing: every WANDER_MS after the activity started they go to the next
   // spot. Work spots first in kitchens and bathrooms, seats first in other rooms.
   const work = workSpots(level, room)
-  const pool = (work.length ? [...work, ...seats(level, room), ...browseSpots(level, room)] : [...seats(level, room), ...browseSpots(level, room), ...work]).filter((s) => !used.has(key(s)))
+  const pool = (work.length ? [...work, ...seats(level, room), ...browseSpots(level, room)] : [...seats(level, room), ...browseSpots(level, room), ...work]).filter((s) => !used.has(key(s)) && ok(s))
   if (pool.length) return pool[turn % pool.length]
+  if (region?.area) return freeCentre(region, room, used)
   const c = centre(room)
   let k = 0
   while (used.has(key({ ...c, x: c.x + k * 0.5 }))) k++
   return { ...c, x: c.x + k * 0.5 }
+}
+
+/** Middle of a zone, or the nearest free point beside it (people in the same zone do not stand on each other) */
+function freeCentre(region: Region, room: Room, used: Set<string>): Spot {
+  const c = regionCentre(region)
+  const r = region.rects.reduce((a, b) => (b.w * b.d > a.w * a.d ? b : a))
+  for (let k = 0; k < 12; k++) {
+    const off = (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.45
+    const x = Math.max(r.x + 0.2, Math.min(r.x + r.w - 0.2, c.x + off))
+    const s: Spot = { x, z: c.z, y: 0, rot: 0, pose: 'stand', roomId: room.id }
+    if (!used.has(key(s))) return s
+  }
+  return { x: c.x, z: c.z, y: 0, rot: 0, pose: 'stand', roomId: room.id }
 }
 const key = (s: { x: number; z: number }) => `${s.x.toFixed(2)},${s.z.toFixed(2)}`
 
@@ -430,9 +458,9 @@ export function touchSpots(level: Level, entities: Entities, now: number): Spot[
 }
 
 /** Nearest free seat within 1.6 m of a spot (the chair of a desk lamp or a computer). */
-function seatNear(level: Level, room: Room, used: Set<string>, anchor: { x: number; z: number }) {
+function seatNear(level: Level, room: Room, used: Set<string>, anchor: { x: number; z: number }, ok?: (s: Spot) => boolean) {
   return seats(level, room)
-    .filter((s) => !used.has(key(s)))
+    .filter((s) => !used.has(key(s)) && (!ok || ok(s)))
     .map((s) => ({ s, d: Math.hypot(s.x - anchor.x, s.z - anchor.z) }))
     .filter((c) => c.d < 1.6)
     .sort((a, b) => a.d - b.d)[0]?.s
@@ -591,10 +619,32 @@ export interface PeopleInput {
   residents: number
   /** Apartment mode: nobody waits outside the front door (it opens onto a corridor, high above the street), people away are not drawn */
   apartment?: boolean
+  /** Layout.presence: with named people they replace the anonymous simulation (absent: the simulation, unchanged) */
+  presence?: PresenceSpec | null
+  /** Named people (keys) shown by the anonymous simulation instead of their room sensor */
+  simulated?: readonly string[]
+  /** Drag corrections the sensor has not confirmed yet, by person key: the person stands where they were dropped */
+  corrections?: Record<string, Correction>
 }
 
-/** Plan of the people: mode, how many, who is where. */
-export function planPeople({ level, entities, registry, alarm, now, residents, apartment }: PeopleInput): PeoplePlan {
+export interface Correction {
+  /** The room value that was sent to the correction service */
+  value: string
+  /** Where the avatar was dropped */
+  at: { x: number; z: number }
+}
+
+/**
+ * Plan of the people: mode, how many, who is where. With named people in `presence` each is placed by their room sensor
+ * (planNamed); without, the anonymous simulation runs exactly as before.
+ */
+export function planPeople(input: PeopleInput): PeoplePlan {
+  const named = namedPeople(input.presence)
+  return named.length ? planNamed(input, named) : planAnonymous(input)
+}
+
+/** The anonymous simulation: motion, lights, computers, alarm and the clock decide who is where. */
+function planAnonymous({ level, entities, registry, alarm, now, residents, apartment }: PeopleInput): PeoplePlan {
   const signals = roomSignals(level, entities, registry, now)
   const anchorOf = new Map(signals.map((s) => [s.roomId, s.anchor]))
   // Someone sits at a computer that is on: strong activity; that room's motion and light are the same person
@@ -667,6 +717,86 @@ export function planPeople({ level, entities, registry, alarm, now, residents, a
     if (!used.has(key(s))) take(s)
   }
   return { mode, count, active, lit, desk, spots: spots.map((s, k) => ({ ...s, activity: s.activity ?? activityFor(s, k, level, entities, now) })) }
+}
+
+/* ---------- named people (presence) ---------- */
+
+/** Beds of a region (inside its zone), lying on the back like the anonymous sleepers */
+const bedsIn = (level: Level, region: Region) => bedSpots(level).filter((b) => b.roomId === region.room.id && inRegionRects(region, b))
+const inRegionRects = (region: Region, s: { x: number; z: number }) => region.rects.some((r) => inRect(r, s.x, s.z))
+
+/** Standing spot at the place an avatar was dropped (nearest free point of the walking grid, in the room if it fits) */
+function droppedSpot(level: Level, at: { x: number; z: number }): Spot {
+  const g = personGrid(level)
+  const room = roomAt(level.rooms, at.x, at.z)
+  const p = isFree(g, at.x, at.z, true) ? at : (nearestFree(g, at.x, at.z, { room: gridRoom(g, at.x, at.z), max: 1.2, outdoor: true }) ?? at)
+  return { x: p.x, z: p.z, y: 0, rot: 0, pose: 'stand', roomId: room?.id ?? null }
+}
+
+/**
+ * Named people (Layout.presence): each person's room sensor says which room value they are in; the value resolves to a room
+ * (and zone) of the plan (presence.ts > resolveRegion) and the person takes one spot in it with the same spot logic as the
+ * anonymous simulation, so they still look alive: asleep in a bed at night, at a computer that is on, facing a TV that is on,
+ * beside the lamp turned on last, then moving on every WANDER_MS (counted from when the sensor last changed). Away, unknown,
+ * unavailable and unmapped values draw nobody (apartment or not). People in `simulated` take the anonymous simulation's spots
+ * instead; a drag correction not confirmed yet puts the person where they were dropped.
+ */
+function planNamed(input: PeopleInput, people: NamedPerson[]): PeoplePlan {
+  const { level, entities, registry, alarm, now, presence } = input
+  const sim = new Set(input.simulated ?? [])
+  const signals = roomSignals(level, entities, registry, now)
+  const anchorOf = new Map(signals.map((s) => [s.roomId, s.anchor]))
+  const desks = desksInUse(level, entities, registry)
+  const sleepy = alarm === 'armed_night' || lateNight(now)
+  const used = new Set<string>()
+  const placed = new Map<string, Spot>()
+  const who = (p: NamedPerson) => ({ who: p.key, name: p.name, look: p.look })
+  const take = (p: NamedPerson, s: Spot) => {
+    used.add(key(s))
+    placed.set(p.key, s)
+  }
+  // Simulated people first (the sensor people then avoid their seats)
+  const simulated = people.filter((p) => sim.has(p.key))
+  if (simulated.length) {
+    const anon = planAnonymous({ ...input, presence: undefined, residents: simulated.length })
+    simulated.forEach((p, i) => anon.spots[i] && take(p, { ...anon.spots[i], ...who(p), confidence: null, fade: 1 }))
+  }
+  const deskUsed = new Set<DeskUse>()
+  people.forEach((p, k) => {
+    if (sim.has(p.key)) return
+    const reading = readRoomSensor(entities[p.roomEntity])
+    const fix = input.corrections?.[p.key]
+    const value = fix ? fix.value : reading?.value
+    const region = resolveRegion(level, presence, value, fix ? null : reading?.areaId)
+    if (!region) return
+    const confidence = fix ? 1 : (reading?.confidence ?? null)
+    const fade = presenceOpacity(confidence, fix ? 'manual_correction' : reading?.source)
+    const room = region.room
+    const inside = (a?: { x: number; z: number }) => !a || inRegionRects(region, a)
+    let spot: Spot
+    if (fix) spot = droppedSpot(level, fix.at)
+    else {
+      const bed = sleepy ? bedsIn(level, region).find((b) => !used.has(key(b))) : undefined
+      const desk = desks.find((d) => d.roomId === room.id && inside(d.anchor) && !deskUsed.has(d))
+      if (bed) spot = bed
+      else if (desk) {
+        deskUsed.add(desk)
+        spot = deskSpot(level, room, used, desk.anchor)
+        // A desk chair outside the zone does not belong to it
+        if (!inside(spot)) spot = activeSpot(level, room, used, undefined, 0, entities, region)
+      } else {
+        const since = reading?.changedAt || now
+        const turn = Math.max(0, Math.floor((now - since) / WANDER_MS))
+        const anchor = anchorOf.get(room.id)
+        spot = activeSpot(level, room, used, anchor && inside(anchor) ? anchor : undefined, turn, entities, region)
+      }
+    }
+    take(p, { ...spot, activity: fix ? 'idle' : (spot.activity ?? activityFor(spot, k, level, entities, now)), ...who(p), confidence, fade })
+  })
+  const spots = people.flatMap((p) => placed.get(p.key) ?? [])
+  const mode: PeopleMode = !spots.length ? 'away' : spots.every((s) => s.pose === 'lie') ? 'sleep' : 'home'
+  const active = [...new Set(spots.flatMap((s) => s.roomId ?? []))]
+  return { mode, count: spots.length, active, lit: [], desk: [], spots }
 }
 
 /** Whether the TV is on (player or plug; not off, standby or unavailable) */

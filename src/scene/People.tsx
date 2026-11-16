@@ -1,19 +1,24 @@
+import { useCursor } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import * as THREE from 'three'
 import { play } from '@/audio/engine'
 import { stepAt } from '@/audio/floor'
 import { passDoors } from './doorTraffic'
 import { useHa } from '@/ha/store'
 import { besideDoor, frontDoor } from '@/model/geometry'
 import { activeLevel, useApartment, useLayout } from '@/model/layoutStore'
-import { planPeople, route, type Activity, type PeoplePlan, type Pose, type Spot } from '@/model/people'
+import { planPeople, route, type Activity, type Correction, type PeoplePlan, type Pose, type Spot } from '@/model/people'
+import { namedPeople } from '@/model/presence'
 import type { Level } from '@/model/types'
+import { useQuick } from '@/ui/quickState'
 import { useView } from './camera'
 import { markShadows } from './frame'
 import { Human } from './Human'
 import { animateHuman, type HumanRefs } from './humanAnim'
-import { LOOKS } from './humanModel'
+import { humanMaterial, LOOKS } from './humanModel'
 import { useAmbient } from './kit/effects'
+import { dragDown, dragMove, dragUp, personTarget, presenceDrag, usePresenceUi } from './presenceState'
 
 /*
  * People in the home (logic in model/people.ts): one person per spot of the plan; when the spot changes they walk through
@@ -59,10 +64,18 @@ interface Walker {
   seed: number
   /** Index of the last step (footstep sound: one per half of the walk cycle) */
   foot: number
+  /** Presence: the named person this walker is (stable) and how solid it is drawn now (1 = opaque) */
+  who?: string
+  fade: number
+  /** Presence: the person left (went away): walks to the front door, then is gone */
+  exit?: boolean
 }
 
 /** Test and debug (window.__homescape.people()): the last plan and each person's position, pose and activity. */
-export const peopleDebug: { plan: PeoplePlan | null; persons: { x: number; z: number; pose: Pose; walking: boolean; roomId: string | null; activity: Activity; heading: number; act: number }[] } = { plan: null, persons: [] }
+export const peopleDebug: {
+  plan: PeoplePlan | null
+  persons: { x: number; z: number; pose: Pose; walking: boolean; roomId: string | null; activity: Activity; heading: number; act: number; who?: string; slot: number; fade: number; carried: boolean }[]
+} = { plan: null, persons: [] }
 
 const same = (a: Spot | undefined, b: Spot) => Boolean(a) && Math.abs(a!.x - b.x) < 0.01 && Math.abs(a!.z - b.z) < 0.01 && a!.pose === b.pose
 
@@ -118,6 +131,8 @@ function newWalker(s: Spot, start: { x: number; z: number }, seated: boolean, i:
     blink: { next: 1 + i, until: 0 },
     seed: i * 1.7 + 0.3,
     foot: 0,
+    who: s.who,
+    fade: s.fade ?? 1,
   }
   // On first load everyone is already in place and at their activity
   if (seated) {
@@ -238,63 +253,165 @@ function step(w: Walker, dt: number, t: number): boolean {
   return busy
 }
 
+/** Sets how solid a character is drawn (its own materials; opaque again as soon as it reaches 1) */
+function setFade(mats: THREE.Material[] | undefined, f: number) {
+  for (const m of mats ?? []) {
+    const tr = f < 0.999
+    if (m.opacity !== f) m.opacity = f
+    if (m.transparent !== tr) {
+      m.transparent = tr
+      m.needsUpdate = true
+    }
+  }
+}
+
+/** Invisible capsule that takes hover, tap and drag for a named person (view mode); its size follows the pose. */
+const HIT = new THREE.CapsuleGeometry(0.2, 0.9, 2, 10)
+
+function PersonHit({ slot, walkers, hits }: { slot: number; walkers: React.RefObject<(Walker | null)[]>; hits: React.RefObject<(THREE.Mesh | null)[]> }) {
+  const [hover, setHover] = useState(false)
+  useCursor(hover)
+  // Only a visible named person can be hit; the hidden slots keep their capsule out of the ray tests
+  const raycast = useMemo(
+    () =>
+      function (this: THREE.Mesh, rc: THREE.Raycaster, out: THREE.Intersection[]) {
+        const w = walkers.current?.[slot]
+        if (w?.who && !w.exit) THREE.Mesh.prototype.raycast.call(this, rc, out)
+      },
+    [slot, walkers],
+  )
+  const who = () => walkers.current?.[slot]?.who
+  return (
+    <mesh
+      ref={(m) => {
+        if (hits.current) hits.current[slot] = m
+      }}
+      geometry={HIT}
+      raycast={raycast}
+      onPointerDown={(e) => {
+        const w = walkers.current?.[slot]
+        if (!w?.who) return
+        const p = namedPeople(useLayout.getState().layout?.presence).find((q) => q.key === w.who)
+        if (p) dragDown(e, { key: personTarget(p.key), entity: p.roomEntity, name: p.name, kind: 'person' }, { x: w.x, z: w.z })
+      }}
+      onPointerMove={dragMove}
+      onPointerUp={dragUp}
+      onClick={(e) => e.stopPropagation()}
+      onPointerOver={(e) => {
+        const k = who()
+        if (!k || document.pointerLockElement) return
+        e.stopPropagation()
+        setHover(true)
+        // The quick pill of an item on the way must not cover the card
+        useQuick.getState().dismiss()
+        usePresenceUi.getState().setHover(personTarget(k))
+      }}
+      onPointerOut={() => {
+        setHover(false)
+        usePresenceUi.getState().setHover(null)
+      }}
+    >
+      <meshBasicMaterial visible={false} />
+    </mesh>
+  )
+}
+
 function Crowd({ plan, level, apartment }: { plan: PeoplePlan; level: Level; apartment: boolean }) {
   const walkers = useRef<(Walker | null)[]>(Array(MAX).fill(null))
   const refs = useRef<(HumanRefs | null)[]>(Array(MAX).fill(null))
+  const hits = useRef<(THREE.Mesh | null)[]>(Array(MAX).fill(null))
   const registers = useMemo(() => Array.from({ length: MAX }, (_, i) => (r: HumanRefs | null) => void (refs.current[i] = r)), [])
+  // One body material per slot (same look as the shared one): a faded person must not fade the others
+  const mats = useMemo(() => Array.from({ length: MAX }, () => humanMaterial.clone()), [])
+  useEffect(() => () => mats.forEach((m) => m.dispose()), [mats])
   const invalidate = useThree((s) => s.invalidate)
   const started = useRef(false)
+  const mountedAt = useRef(performance.now())
   // Idle people still breathe, look around and do their activity: frames at the ambient rate
   useAmbient(true)
 
-  // When the plan changes: give each spot to the nearest person (someone already there stays), set up a walking route if needed
+  // When the plan changes: give each spot to the nearest person (someone already there stays), set up a walking route if needed.
+  // Named people (spot.who) keep their own slot (outfit) and walker whatever else changes.
   useEffect(() => {
     const ws = walkers.current
-    // In an apartment everyone can be away (nobody drawn), so "first time" is remembered instead of read from the empty crowd
-    const firstTime = apartment ? !started.current : ws.every((w) => !w)
+    const named = plan.spots.some((s) => s.who)
+    // In an apartment everyone can be away (nobody drawn), so "first time" is remembered instead of read from the empty crowd.
+    // Named people can appear a moment after the page opens (the sensors arrive late): they count as being there from the start.
+    const firstTime = (apartment ? !started.current : ws.every((w) => !w)) || (named && performance.now() - mountedAt.current < 4000)
     started.current = true
     const door = entrance(level, apartment)
     const spots = plan.spots.slice(0, MAX)
-    const free = new Set(ws.map((w, i) => (w ? i : -1)).filter((i) => i >= 0))
     const assigned = new Set<number>()
-    for (const s of spots) {
-      let best = -1
-      let bd = Infinity
-      for (const i of free) {
-        const w = ws[i]!
-        const d = same(w.target, s) ? -1 : Math.hypot(w.x - s.x, w.z - s.z)
-        if (d < bd) {
-          bd = d
-          best = i
-        }
-      }
-      if (best < 0) {
-        // New person: in place on first load, entering through the front door when arriving later
-        best = ws.findIndex((w, i) => !w && !assigned.has(i))
-        if (best < 0) continue
-        const start = firstTime || !door ? { x: s.x, z: s.z } : door
-        const w = newWalker(s, start, firstTime || !door, best)
-        if (!firstTime && door) w.path = route(level, start, { ...s, ...w.app })
-        ws[best] = w
-      } else {
-        free.delete(best)
-        const w = ws[best]!
-        if (!same(w.target, s)) {
-          // Someone getting up from the toilet flushes it
-          if (w.target.use === 'toilet' && w.sit > 0.5) play('flush', { x: w.target.x, y: 0.5, z: w.target.z })
-          // If sitting, sets off from the point where they stand up
-          const from = w.from && (w.sit > 0 || w.lie > 0) ? w.from : { x: w.x, z: w.z }
-          w.target = s
-          w.app = approach(s, from)
-          w.path = route(level, from, { ...s, ...w.app })
-        } else w.target = s
-      }
-      assigned.add(best)
+    // A person who was not there: in place on first load, entering through the front door when arriving later
+    const enter = (i: number, s: Spot) => {
+      const start = firstTime || !door ? { x: s.x, z: s.z } : door
+      const w = newWalker(s, start, firstTime || !door, i)
+      if (!firstTime && door) w.path = route(level, start, { ...s, ...w.app })
+      ws[i] = w
     }
-    // People dropped from the plan disappear
-    ws.forEach((_, i) => {
-      if (!assigned.has(i)) ws[i] = null
-    })
+    // A person who was: stays if the spot is the same, else walks there (getting up first if sitting)
+    const move = (w: Walker, s: Spot) => {
+      if (!same(w.target, s)) {
+        // Someone getting up from the toilet flushes it
+        if (w.target.use === 'toilet' && w.sit > 0.5) play('flush', { x: w.target.x, y: 0.5, z: w.target.z })
+        // If sitting, sets off from the point where they stand up
+        const from = w.from && (w.sit > 0 || w.lie > 0) ? w.from : { x: w.x, z: w.z }
+        w.target = s
+        w.app = approach(s, from)
+        w.path = route(level, from, { ...s, ...w.app })
+      } else w.target = s
+    }
+    if (named) {
+      for (const s of spots) {
+        const i = Math.min(MAX - 1, Math.max(0, s.look ?? 0))
+        const cur = ws[i]
+        if (!cur || cur.exit || (cur.who && cur.who !== s.who)) enter(i, s)
+        else move(cur, s)
+        ws[i]!.who = s.who
+        assigned.add(i)
+      }
+      // A person who is no longer placed (away, unknown, unmapped) walks to the front door and is gone
+      ws.forEach((w, i) => {
+        if (!w || assigned.has(i) || w.exit) return
+        const out = entrance(level, apartment)
+        if (!out) return void (ws[i] = null)
+        const from = w.from && (w.sit > 0 || w.lie > 0) ? w.from : { x: w.x, z: w.z }
+        const s: Spot = { x: out.x, z: out.z, y: 0, rot: 0, pose: 'stand', roomId: null, who: w.who, fade: w.target.fade }
+        w.target = s
+        w.app = approach(s, from)
+        w.path = route(level, from, { ...s, ...w.app })
+        w.exit = true
+      })
+    } else {
+      const free = new Set(ws.map((w, i) => (w ? i : -1)).filter((i) => i >= 0))
+      for (const s of spots) {
+        let best = -1
+        let bd = Infinity
+        for (const i of free) {
+          const w = ws[i]!
+          const d = same(w.target, s) ? -1 : Math.hypot(w.x - s.x, w.z - s.z)
+          if (d < bd) {
+            bd = d
+            best = i
+          }
+        }
+        if (best < 0) {
+          best = ws.findIndex((w, i) => !w && !assigned.has(i))
+          if (best < 0) continue
+          enter(best, s)
+        } else {
+          free.delete(best)
+          move(ws[best]!, s)
+        }
+        ws[best]!.who = undefined
+        ws[best]!.exit = false
+        assigned.add(best)
+      }
+      // People dropped from the plan disappear
+      ws.forEach((_, i) => {
+        if (!assigned.has(i)) ws[i] = null
+      })
+    }
     peopleDebug.plan = plan
     invalidate()
   }, [plan, level, apartment, invalidate])
@@ -304,20 +421,59 @@ function Crowd({ plan, level, apartment }: { plan: PeoplePlan; level: Level; apa
     const dt = Math.min(delta, 0.1)
     const t = state.clock.elapsedTime
     let moving = false
+    const drag = presenceDrag.key
     walkers.current.forEach((w, i) => {
       const r = refs.current[i]
       if (!r) return
       r.root.visible = Boolean(w)
       if (!w) return
-      moving = step(w, dt, t) || moving
+      // Picked up: follows the pointer, standing, a hand's breadth above the floor
+      const carried = Boolean(w.who && drag === personTarget(w.who))
+      if (carried) {
+        w.x = presenceDrag.x
+        w.z = presenceDrag.z
+        w.path = []
+        w.speed = 0
+        w.walk = approachTo(w.walk, 0.25, dt * 6)
+        w.sit = 0
+        w.lie = 0
+        w.seat = null
+        w.from = null
+        w.act = Math.max(0, w.act - dt * 6)
+        moving = true
+      } else moving = step(w, dt, t) || moving
+      // Faded or solid, eased
+      const want = w.target.fade ?? 1
+      if (w.fade !== want) {
+        w.fade = approachTo(w.fade, want, dt * 2.5)
+        setFade(r.mats, w.fade)
+        moving = true
+      }
+      // Someone who left reached the front door
+      if (w.exit && !w.path.length && w.sit === 0 && w.lie === 0) {
+        walkers.current[i] = null
+        r.root.visible = false
+        return
+      }
       // Footstep sound: on each half of the walk cycle (quieter when turning in place)
       const foot = Math.floor(w.stride / Math.PI)
       if (foot !== w.foot) {
-        if (w.walk > 0.25) stepAt(level, w.x, w.z, { gain: w.path.length ? 0.45 : 0.2 })
+        if (w.walk > 0.25 && !carried) stepAt(level, w.x, w.z, { gain: w.path.length ? 0.45 : 0.2 })
         w.foot = foot
       }
-      r.root.position.set(w.x, 0, w.z)
+      const lift = carried ? 0.14 : 0
+      r.root.position.set(w.x, lift, w.z)
       r.root.rotation.y = w.heading
+      r.shadow.position.y = 0.004 - lift
+      // The hit capsule: standing, sitting and lying
+      const hit = hits.current[i]
+      if (hit) {
+        const lieK = ease(w.lie)
+        const sitK = ease(w.sit)
+        hit.position.y = (0.8 - 0.15 * sitK) * (1 - lieK) + (w.target.y + 0.24) * lieK
+        hit.scale.y = (1 - 0.2 * sitK) * (1 - lieK) + 1.3 * lieK
+        hit.rotation.x = lieK * (Math.PI / 2)
+      }
       const seat = w.seat ?? { y: w.target.y, lean: w.target.lean ?? 0 }
       animateHuman(r, {
         t: t + w.seed * 10,
@@ -343,7 +499,7 @@ function Crowd({ plan, level, apartment }: { plan: PeoplePlan; level: Level; apa
       doorAt.current = t
       passDoors(level, walkers.current.flatMap((w) => (w && w.path.length ? [{ x: w.x, z: w.z }] : [])))
     }
-    peopleDebug.persons = walkers.current.flatMap((w) =>
+    peopleDebug.persons = walkers.current.flatMap((w, i) =>
       w
         ? [
             {
@@ -355,6 +511,10 @@ function Crowd({ plan, level, apartment }: { plan: PeoplePlan; level: Level; apa
               activity: w.activity,
               heading: w.heading,
               act: w.act,
+              who: w.who,
+              slot: i,
+              fade: w.fade,
+              carried: Boolean(w.who && drag === personTarget(w.who)),
             },
           ]
         : [],
@@ -369,17 +529,22 @@ function Crowd({ plan, level, apartment }: { plan: PeoplePlan; level: Level; apa
   return (
     <>
       {LOOKS.slice(0, MAX).map((look, i) => (
-        <Human key={i} look={look} register={registers[i]} />
+        <Human key={i} look={look} register={registers[i]} material={mats[i]}>
+          <PersonHit slot={i} walkers={walkers} hits={hits} />
+        </Human>
       ))}
     </>
   )
 }
 
-/** The people plan (alarm mode, motion sensors, household, time). Used by the scene and the People panel in the toolbar. */
+/** The people plan (alarm mode, motion sensors, household, time, or the named people of Layout.presence). Used by the scene and the People panel in the toolbar. */
 export function usePeoplePlan() {
   const residents = useView((s) => s.residents)
   const apartment = useApartment() !== null
   const level = useLayout((s) => activeLevel(s))
+  const presence = useLayout((s) => s.layout?.presence)
+  const simulated = usePresenceUi((s) => s.simulated)
+  const pending = usePresenceUi((s) => s.pending)
   const entities = useHa((s) => s.entities)
   const registry = useHa((s) => s.registry)
   // Clock for the wait after motion ends and for bedtime (every 15 s)
@@ -389,7 +554,16 @@ export function usePeoplePlan() {
     return () => window.clearInterval(id)
   }, [])
   const alarm = useMemo(() => Object.values(entities).find((e) => e.entity_id.startsWith('alarm_control_panel.'))?.state, [entities])
-  const plan = useMemo(() => (level ? planPeople({ level, entities, registry, alarm, now, residents, apartment }) : null), [level, entities, registry, alarm, now, residents, apartment])
+  // Drag corrections the sensors have not confirmed yet, by person key
+  const corrections = useMemo(() => {
+    const out: Record<string, Correction> = {}
+    for (const [k, p] of Object.entries(pending)) if (p.kind === 'person' && k.startsWith('p:')) out[k.slice(2)] = { value: p.value, at: p.at }
+    return out
+  }, [pending])
+  const plan = useMemo(
+    () => (level ? planPeople({ level, entities, registry, alarm, now, residents, apartment, presence, simulated, corrections }) : null),
+    [level, entities, registry, alarm, now, residents, apartment, presence, simulated, corrections],
+  )
   return { plan, level, apartment }
 }
 

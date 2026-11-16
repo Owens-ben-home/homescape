@@ -4,7 +4,7 @@ import type { Entities, HaSource } from '@/ha/types'
 /*
  * Test hook (window.__homescape.fakeLive): a source that imitates a live HA connection. It connects to no real home; it
  * records the service calls it receives (to check that the sample home's commands never reach the real HA). It carries a
- * single "real" light. demo() switches back to the demo connection.
+ * single "real" light (fakeLiveSet adds more, such as room sensors). demo() switches back to the demo connection.
  */
 
 export const fakeCalls: { domain: string; service: string; data: Record<string, unknown> }[] = []
@@ -29,15 +29,28 @@ export const fakeUserData = {
   },
 }
 
+/** The fake source's entities and who listens: fakeLiveSet writes a state like a live Home Assistant would push it */
+let liveEntities: Entities = {}
+const liveSubs = new Set<(e: Entities) => void>()
+
+/** Sets (or adds) an entity of the fake live source and tells the app, as a state change from Home Assistant (tests: room sensors) */
+export function fakeLiveSet(e: { entity_id: string; state: string; attributes?: Record<string, unknown>; last_changed?: string }) {
+  liveEntities = { ...liveEntities, [e.entity_id]: { attributes: {}, last_changed: new Date().toISOString(), ...e } }
+  for (const cb of liveSubs) cb(liveEntities)
+  return true
+}
+
 export async function fakeLive() {
   fakeCalls.length = 0
-  const entities: Entities = { 'light.real_lamp': { entity_id: 'light.real_lamp', state: 'off', attributes: { friendly_name: 'Real lamp' } } }
+  liveEntities = { 'light.real_lamp': { entity_id: 'light.real_lamp', state: 'off', attributes: { friendly_name: 'Real lamp' } } }
+  liveSubs.clear()
   const source: HaSource = {
     kind: 'live',
     label: 'Test',
     subscribe(cb) {
-      cb(entities)
-      return () => {}
+      liveSubs.add(cb)
+      cb(liveEntities)
+      return () => void liveSubs.delete(cb)
     },
     async callService(domain, service, data) {
       fakeCalls.push({ domain, service, data })

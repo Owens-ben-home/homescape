@@ -45,11 +45,25 @@ interface Window {
     /** Plan backups in the fake live source */
     fakeBackups: () => Promise<unknown>
     fakeLiveCalls: () => Promise<{ domain: string; service: string; data: Record<string, unknown> }[]>
+    /** Sets or adds an entity of the fake live source, pushed to the app like a state change from Home Assistant (room sensors in tests) */
+    fakeLiveSet: (e: { entity_id: string; state: string; attributes?: Record<string, unknown>; last_changed?: string }) => Promise<boolean>
     demo: () => Promise<void>
     /** Ray in the scene: height, distance and item of the first visible hit (dev/sceneProbe.ts) */
     pick: (x: number, y: number, z: number, dx: number, dy: number, dz: number) => Promise<{ y: number; distance: number; itemId: string | null } | null>
     /** Apartment mode (Layout.apartment): given { floor } or null it calls setApartment first; returns the current setting (null for a house) */
     apartment: (next?: { floor: number } | null) => { floor: number } | null
+    /**
+     * Presence (Layout.presence): with a value it calls setPresence first (null removes the settings); returns the plan's presence
+     * settings, the named people and the pets driven by a room sensor as resolved now (room, zone, confidence), the drag corrections
+     * waiting for the sensor, and the drag in progress (scene/presenceState.ts > presenceSnapshot)
+     */
+    presence: (next?: { people?: Record<string, { name: string; roomEntity: string; look?: number }>; roomMap?: Record<string, { room: string; area?: { x: number; z: number; w: number; d: number } }> } | null) => Promise<{
+      plan: unknown
+      people: { key: string; name: string; look: number; entity: string; simulated: boolean; value: string | null; confidence: number | null; source: string | null; indicators: string[]; roomId: string | null; area: { x: number; z: number; w: number; d: number } | null }[]
+      pets: { itemId: string; entity: string; value: string; away: boolean; roomId: string | null; area: { x: number; z: number; w: number; d: number } | null }[]
+      pending: Record<string, { value: string; entity: string; name: string; kind: 'person' | 'pet'; until: number; at: { x: number; z: number } }>
+      drag: { key: string | null; started: boolean; x: number; z: number; ok: boolean; label: string }
+    }>
     /** Roof groups in the scene (drawn or not) and the ground plane's world height (dev/sceneProbe.ts > structure) */
     sceneStructure: () => Promise<{ roofs: number; ground: number | null } | null>
     /** The item's group in the scene: its id (changes when rebuilt), world height, visible or not */

@@ -346,6 +346,18 @@ export interface Layout {
    * stays at street level far below, nobody waits outside the front door. Helpers: model/apartment.ts, `useApartment`.
    */
   apartment?: { floor: number }
+  /**
+   * Presence (missing: the anonymous household simulation): named, identity-stable people placed from an external per person
+   * room sensor (Roomer-style: the state is a room value, attributes carry confidence, indicators and source), and where each
+   * room value sits in this plan. Helpers: model/presence.ts, `setPresence`. Pets use no field here: bind the room sensor to the
+   * pet item itself (`Item.entityId`).
+   */
+  presence?: {
+    /** key: a stable id chosen by the plan author */
+    people?: Record<string, { name: string; roomEntity: string; look?: number }>
+    /** Room value -> where it is in the plan; `area` (plan metres) narrows it to a zone of a bigger room */
+    roomMap?: Record<string, { room: string; area?: { x: number; z: number; w: number; d: number } }>
+  }
 }
 
 export type Selection = { type: 'room' | 'item'; id: string } | null
