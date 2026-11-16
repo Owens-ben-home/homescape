@@ -37,6 +37,7 @@ const INNER_KEY = 'homescape-inner-walls'
 const PEOPLE_KEY = 'homescape-people'
 const STREET_KEY = 'homescape-street'
 const LABELS_KEY = 'homescape-labels'
+const BACKDROP_KEY = 'homescape-backdrop'
 
 export interface StreetKinds {
   cars: boolean
@@ -118,6 +119,8 @@ interface ViewState {
   lowerFloors: boolean
   /** Room names on the 3D view in view mode (remembered); edit mode always shows them with their size */
   labels: boolean
+  /** The view backdrop of an apartment: skyline, bridges, river behind the windows (scene/Backdrop.tsx). On by default, remembered. */
+  backdrop: boolean
   /** Roof display (scene/Roofs.tsx). Remembered. */
   roof: RoofMode
   /** Roof type of the homes (by home id; tile when missing). Remembered. */
@@ -140,6 +143,7 @@ interface ViewState {
   setResidents: (n: number) => void
   setLowerFloors: (on: boolean) => void
   setLabels: (on: boolean) => void
+  setBackdrop: (on: boolean) => void
   setRoof: (mode: RoofMode) => void
   setRoofStyle: (homeId: string, style: RoofStyle) => void
   setFps: (on: boolean) => void
@@ -159,6 +163,7 @@ export const useView = create<ViewState>()((set, get) => ({
   residents: Math.min(4, Math.max(1, Number(readPref(RESIDENTS_KEY)) || 2)),
   lowerFloors: readPref(LOWER_KEY) !== '0',
   labels: readPref(LABELS_KEY) !== '0',
+  backdrop: readPref(BACKDROP_KEY) !== '0',
   roof: (['auto', 'on', 'off'] as const).find((m) => m === readPref(ROOF_KEY)) ?? 'auto',
   roofStyle: readRoofStyle(),
   fps: false,
@@ -200,6 +205,10 @@ export const useView = create<ViewState>()((set, get) => ({
   setLabels: (labels) => {
     writePref(LABELS_KEY, labels ? '1' : '0')
     set({ labels })
+  },
+  setBackdrop: (backdrop) => {
+    writePref(BACKDROP_KEY, backdrop ? '1' : '0')
+    set({ backdrop })
   },
   setRoof: (roof) => {
     writePref(ROOF_KEY, roof)
@@ -378,6 +387,10 @@ export const cameraApi = {
   /** Q / E: rotate the camera by degrees. */
   rotate: (deg: number) => {
     if (controls) void controls.rotate((deg * Math.PI) / 180, 0, true)
+  },
+  /** Test hook: the camera at `position` looking at `target` (tests and screenshots; the focal shift stays as it is). */
+  lookAt: (position: [number, number, number], target: [number, number, number], smooth = false) => {
+    if (controls) void controls.setLookAt(...position, ...target, smooth)
   },
   /** Panning with the arrow keys: x right, z forward (in the ground plane). */
   pan: (x: number, z: number) => {

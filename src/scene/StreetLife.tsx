@@ -7,7 +7,7 @@ import { play } from '@/audio/engine'
 import { stepAt } from '@/audio/floor'
 import { domainOf } from '@/ha/derive'
 import { useHa } from '@/ha/store'
-import { activeLevel, useLayout } from '@/model/layoutStore'
+import { activeLevel, useApartment, useLayout } from '@/model/layoutStore'
 import type { Activity } from '@/model/people'
 import type { Item, Level } from '@/model/types'
 import { type StreetKinds, useView } from './camera'
@@ -246,7 +246,10 @@ export function StreetLife() {
   const rain = Boolean(weather && /rain|pouring|lightning|hail|snow/.test(weather))
   const net = useMemo(() => (level ? streetNet(level) : null), [level])
   const has = Boolean(net && (net.roads.length || net.walks.length || net.play.length))
-  const visible = show && !lite && mode === 'view' && Boolean(level) && has
+  // Apartment mode: no traffic. A street surface on the unit's own floor would float with it high above the real street, and the
+  // street below is drawn by Building.tsx without any cars or walkers.
+  const apartment = useApartment() !== null
+  const visible = show && !lite && !apartment && mode === 'view' && Boolean(level) && has
   useEffect(() => {
     if (visible) return
     streetDebug.active = false

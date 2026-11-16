@@ -199,7 +199,10 @@ interface LayoutState {
   /** Deletes a home (not the last one); deleting the active home switches to another one. */
   deleteHome: (id: string) => void
 
-  /** Adds a level (on top, or a basement with below) and switches to it; copyRooms copies the current level's rooms (except gardens). */
+  /**
+   * Adds a level (on top, or a basement with below) and switches to it; copyRooms copies the current level's rooms (except gardens).
+   * In apartment mode `below` keeps the unit's lowest level on its building floor: the new level takes that floor and the rest move up one.
+   */
   addLevel: (opts?: { below?: boolean; copyRooms?: boolean }) => string | null
   setLevel: (id: string) => void
   renameLevel: (id: string, name: string) => void
@@ -568,12 +571,16 @@ export const useLayout = create<LayoutState>()(
           const cur = activeLevel(get())
           if (!layout || !cur) return null
           const elevs = layout.levels.map((l) => l.elevation ?? 0)
-          const elevation = opts.below ? Math.min(...elevs) - 1 : Math.max(...elevs) + 1
+          // Apartment mode: the unit's lowest level stays on its building floor (the block under it is built to that height), so a
+          // level added below takes that floor and the existing ones move up by one
+          const pushUp = Boolean(opts.below && layout.apartment)
+          const elevation = opts.below ? (pushUp ? Math.min(...elevs) : Math.min(...elevs) - 1) : Math.max(...elevs) + 1
           const rooms = opts.copyRooms ? cur.rooms.filter((r) => r.type !== 'garden').map((r) => ({ ...r, id: uid('room'), areaId: null })) : []
           const lvl: Level = { id: uid('lvl'), name: '', rooms, items: [], elevation }
           lvl.name = levelName(lvl)
           // The unnamed level of a single-level plan gets its shown name ("Ground floor") as its name
-          const levels = [...layout.levels.map((l) => (unnamedLevel(l) ? { ...l, name: levelName({ ...l, name: '' }) } : l)), lvl].sort((a, b) => (a.elevation ?? 0) - (b.elevation ?? 0))
+          const named = layout.levels.map((l) => (unnamedLevel(l) ? { ...l, name: levelName({ ...l, name: '' }) } : l))
+          const levels = [...(pushUp ? named.map((l) => ({ ...l, elevation: (l.elevation ?? 0) + 1 })) : named), lvl].sort((a, b) => (a.elevation ?? 0) - (b.elevation ?? 0))
           set({ layout: { ...layout, levels }, levelId: lvl.id, selection: null, multi: null, past: [...past, layout].slice(-HISTORY), future: [] })
           return lvl.id
         },
