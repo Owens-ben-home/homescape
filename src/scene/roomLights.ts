@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { deviceClass, isActive, lightColor, lightLevel } from '@/ha/derive'
 import type { HassEntity } from '@/ha/types'
+import { itemOn } from '@/model/activity'
 import { bindingsOf, ledOf, ledSource } from '@/model/bindings'
 import { BEAM } from '@/model/catalog'
 import { apertureOf, doorSides, isOutdoor, rectsOf, roomAt, WALL_H, WALL_T } from '@/model/geometry'
@@ -500,7 +501,7 @@ export function computeRoomLights(level: Level, entities: Record<string, HassEnt
       const id = ledSource(it)
       const light = id ? entities[id] : undefined
       const panelY = it.variant === 'wall' ? 1.3 : 0.56
-      if (light ? isActive(light) : e && isActive(e)) push(it, [0, panelY, -0.05], 2.2, 0.9, 0, _c.set(light ? lightColor(light) : '#8f7cff'))
+      if (light ? isActive(light) : itemOn(it, entities)) push(it, [0, panelY, -0.05], 2.2, 0.9, 0, _c.set(light ? lightColor(light) : '#8f7cff'))
     }
   }
   // Through open interior doors into the next room: same source, the neighbor's rectangles, the door opening. Lights from

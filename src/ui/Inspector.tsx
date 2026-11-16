@@ -18,6 +18,7 @@ import { mountCenter, mountY, setMountY, setWallMount } from './mount'
 import type { FloorMaterial, Item, ItemKind, Room, RoomType } from '@/model/types'
 import { currentLang, lower, t, tn } from '@/i18n'
 import { useView } from '@/scene/camera'
+import { ActivityEditor, ActivitySummary } from './ActivityEditor'
 import { BindingEditor, BindingSummary, itemName, itemStateLabel } from './Bindings'
 import { EntityControls } from './Controls'
 import { removeRoom, removeRoomPart, roomContentsCount } from './removal'
@@ -152,6 +153,7 @@ function ItemView({ item, room }: { item: Item; room?: Room }) {
         )}
         {(item.kind === 'aquarium' || item.kind === 'fishbowl') && <AquariumFeed item={item} />}
         <BindingSummary item={item} />
+        <ActivitySummary item={item} />
         {groupSize > 1 && (
           <p className="flex items-center gap-1.5 text-[12px] text-ink-2">
             <Group size={14} className="text-brand" />
@@ -895,6 +897,7 @@ function ItemEdit({ item, room }: { item: Item; room?: Room }) {
 
         <GroupInfo item={item} />
         <BindingEditor key={item.id} item={item} room={room} />
+        <ActivityEditor key={`act-${item.id}`} item={item} />
 
         <div className="grid gap-1.5">
           <span className="text-[12px] font-semibold text-ink-2">{t('Rotate')}</span>

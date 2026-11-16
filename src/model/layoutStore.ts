@@ -462,7 +462,7 @@ export const useLayout = create<LayoutState>()(
           // A copy of a grouped light stays in the group with its bindings (to add spots to a group); other copies are unbound.
           const copy = src.group
             ? { ...src, id: uid('it'), x: src.x + 0.5, z: src.z + 0.5, name: undefined }
-            : { ...src, id: uid('it'), x: src.x + 0.5, z: src.z + 0.5, entityId: null, extras: [], name: undefined }
+            : { ...src, id: uid('it'), x: src.x + 0.5, z: src.z + 0.5, entityId: null, extras: [], activeWhen: undefined, name: undefined }
           change((l) => ({ ...l, items: [...l.items, copy] }))
           set({ selection: { type: 'item', id: copy.id } })
         },

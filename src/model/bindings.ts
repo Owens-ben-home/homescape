@@ -1,4 +1,5 @@
 import { t } from '@/i18n'
+import { ruleEntities } from './activity'
 import { isLightKind } from './catalog'
 import type { Item, ItemKind } from './types'
 
@@ -15,10 +16,11 @@ export function bindingsOf(item: Item): string[] {
   return out
 }
 
-export const isBound = (item: Item) => Boolean(item.entityId) || (item.extras?.length ?? 0) > 0
+/** Bound to an entity: a main one, extras, or an activity rule (which reads an entity without controlling it). */
+export const isBound = (item: Item) => Boolean(item.entityId) || (item.extras?.length ?? 0) > 0 || ruleEntities(item).length > 0
 
 /** Whether the entity is bound to any item in the plan. */
-export const boundAnywhere = (items: Item[], id: string) => items.some((it) => it.entityId === id || it.extras?.includes(id))
+export const boundAnywhere = (items: Item[], id: string) => items.some((it) => it.entityId === id || it.extras?.includes(id) || ruleEntities(it).includes(id))
 
 /**
  * Domains that can be the item's actual device: for a TV what drives the screen (media player, remote, plug), for a

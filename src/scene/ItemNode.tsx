@@ -9,6 +9,7 @@ import { isSimulated, useHa } from '@/ha/store'
 import type { HassEntity } from '@/ha/types'
 import { toggle } from '@/ha/actions'
 import { t } from '@/i18n'
+import { hasRules, visualDebug } from '@/model/activity'
 import { isBound } from '@/model/bindings'
 import { CATALOG, isLightKind, sizeOf } from '@/model/catalog'
 import { doorSides, isAperture, isOutdoor, snap, wallSnap } from '@/model/geometry'
@@ -45,6 +46,8 @@ interface Props {
    */
   levelId?: string
   still?: boolean
+  /** One of the item's activity rules matches (model/activity.ts): the item counts as on besides its main entity */
+  ruleOn?: boolean
 }
 
 const busy = () => Boolean(usePlacement.getState().target) || cameraKey()
@@ -55,12 +58,12 @@ const busy = () => Boolean(usePlacement.getState().target) || cameraKey()
  * or its extra entities change.
  */
 export const ItemNode = memo(ItemNodeImpl, (a, b) => {
-  if (a.item !== b.item || a.entity !== b.entity || a.night !== b.night || a.still !== b.still || a.levelId !== b.levelId) return false
+  if (a.item !== b.item || a.entity !== b.entity || a.night !== b.night || a.still !== b.still || a.levelId !== b.levelId || a.ruleOn !== b.ruleOn) return false
   if (a.related === b.related) return true
   return a.related.length === b.related.length && a.related.every((e, i) => e === b.related[i])
 })
 
-function ItemNodeImpl({ item, entity, related, night, levelId, still = false }: Props) {
+function ItemNodeImpl({ item, entity, related, night, levelId, still = false, ruleOn = false }: Props) {
   const Comp = KIT[item.kind]
   // The item's floor (the active floor when not given)
   const lvOf = (s: Parameters<typeof activeLevel>[0]) => (levelId ? s.layout?.levels.find((l) => l.id === levelId) : activeLevel(s))
@@ -154,10 +157,12 @@ function ItemNodeImpl({ item, entity, related, night, levelId, still = false }: 
     state.invalidate()
   })
 
+  const ruled = hasRules(item)
   const v: Visual = useMemo(() => {
     const opening = { related, interior, hingeRight, swingOut, edit, opts, at: { x: item.x, z: item.z, rot: item.rot, y: item.y } }
-    if (!entity) return { ...OFF_VISUAL, bound: Boolean(item.entityId), night, unavailable: Boolean(item.entityId), ...opening, open: open ? 1 : 0, openParts }
-    const on = isActive(entity)
+    // No main entity: an item with activity rules still lives (on while a rule matches)
+    if (!entity) return { ...OFF_VISUAL, bound: Boolean(item.entityId) || ruled, on: ruleOn, level: ruleOn && !isLightKind(item.kind) ? 1 : 0, night, unavailable: Boolean(item.entityId), ...opening, open: open ? 1 : 0, openParts }
+    const on = isActive(entity) || ruleOn
     return {
       ...opening,
       bound: true,
@@ -173,8 +178,11 @@ function ItemNodeImpl({ item, entity, related, night, levelId, still = false }: 
       open: open ? 1 : 0,
       openParts,
     }
-  }, [entity, item.entityId, item.kind, item.x, item.z, item.rot, item.y, night, related, interior, hingeRight, swingOut, edit, opts, intensity, open, openParts])
+  }, [entity, ruleOn, ruled, item.entityId, item.kind, item.x, item.z, item.rot, item.y, night, related, interior, hingeRight, swingOut, edit, opts, intensity, open, openParts])
 
+  useEffect(() => {
+    visualDebug[item.id] = v.on
+  }, [item.id, v.on])
   const y = item.y ?? DEFAULT_Y[item.kind] ?? 0
   // The model is not re-rendered unless its look changes (selection, hover and floor change only update this node)
   const model = useMemo(() => <Comp v={v} />, [Comp, v])

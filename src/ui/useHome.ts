@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { deviceClass, domainOf, isActive, num } from '@/ha/derive'
 import { useHa } from '@/ha/store'
 import type { HassEntity } from '@/ha/types'
+import { useActivityClock, hasRules, ruleActive } from '@/model/activity'
 import { bindingsOf, itemLightIds } from '@/model/bindings'
 import { isLightKind } from '@/model/catalog'
 import { inRoom } from '@/model/geometry'
@@ -74,12 +75,16 @@ export interface HomeTotals {
   devicesOn: number
 }
 
+/** Main entity domains that count as a running device on the Dashboard. */
+const DEVICE_DOMAINS = ['switch', 'media_player', 'climate', 'fan', 'humidifier', 'vacuum', 'lawn_mower', 'water_heater', 'valve', 'siren']
+
 export function useHomeTotals(stats: Record<string, RoomStats>): HomeTotals {
   const level = useLayout((s) => activeLevel(s))
   const entities = useHa((s) => s.entities)
+  const clock = useActivityClock()
   return useMemo(() => {
+    void clock // a hold ran out: look at the rules again
     const items = level?.items ?? []
-    const bound = items.filter((it) => it.entityId && entities[it.entityId])
     const st = Object.values(stats)
     // A door / window is open when its bound door / window sensor or door / window type cover (garage, garden gate) is open.
     // An open curtain, blind or shade (cover: curtain, blind, shade, shutter, awning) does not count as an open window.
@@ -92,9 +97,14 @@ export function useHomeTotals(stats: Record<string, RoomStats>): HomeTotals {
       lightsOn: st.reduce((a, s) => a + s.lightsOn, 0),
       avgTemp: avg(st.map((s) => s.temp).filter((n): n is number => n != null)),
       openings: items.filter((it) => ['door', 'window', 'garageDoor', 'gate'].includes(it.kind) && bindingsOf(it).some((id) => isOpening(entities[id]))).length,
-      devicesOn: bound.filter((it) => !isLightKind(it.kind) && ['switch', 'media_player', 'climate', 'fan', 'humidifier', 'vacuum', 'lawn_mower', 'water_heater', 'valve', 'siren'].includes(it.entityId!.split('.')[0]) && isActive(entities[it.entityId!])).length,
+      // A device runs when its main entity is on or one of its activity rules matches (model/activity.ts)
+      devicesOn: items.filter(
+        (it) =>
+          !isLightKind(it.kind) &&
+          ((it.entityId && entities[it.entityId] && DEVICE_DOMAINS.includes(it.entityId.split('.')[0]) && isActive(entities[it.entityId])) || (hasRules(it) && ruleActive(it, entities))),
+      ).length,
     }
-  }, [level, entities, stats])
+  }, [level, entities, stats, clock])
 }
 
 /** Number with a fixed number of decimals for display; '-' when missing */
