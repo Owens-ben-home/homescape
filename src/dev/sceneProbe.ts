@@ -31,18 +31,53 @@ export function pick(x: number, y: number, z: number, dx: number, dy: number, dz
   return hit ? { y: hit.point.y, distance: hit.distance, itemId: itemOf(hit.object) } : null
 }
 
-/** Scene structure for the apartment check: roof groups in the scene (drawn or not) and the ground plane's world height */
+interface BuildingTag {
+  side: string
+  floors: number
+  bays: number
+  length: number
+  depth: number
+  top: number
+}
+interface StreetTag {
+  y: number
+  sidewalk: number
+  width: number
+}
+
+/**
+ * Scene structure for the apartment checks: roof groups in the scene (drawn or not), the ground plane's world height, the
+ * building under the unit (its top, floors and bays, the floor plate's top, how many panes), the street (surface and
+ * sidewalk) and the backdrop (scene/Backdrop.tsx), each null when not in the scene.
+ */
 export function structure() {
   const s = scene()
   if (!s) return null
   let roofs = 0
-  let ground: number | null = null
+  const found = { ground: null as number | null, building: null as BuildingTag | null, street: null as StreetTag | null, backdrop: null as { layers: number; visible: boolean } | null, plateTop: null as number | null, panes: 0 }
+  const v = new THREE.Vector3()
   s.traverse((o) => {
     if (o.userData.roof) roofs += 1
     // The ground is a plane 12.5 cm below the floor of the active level (scene/EditLayer.tsx > Ground)
-    if (o.userData.ground) ground = o.getWorldPosition(new THREE.Vector3()).y
+    if (o.userData.ground) found.ground = o.getWorldPosition(v).y
+    // The building group sits at the active level's offset: its tags hold heights from the ground floor's floor line
+    if (o.userData.building) {
+      const t = o.userData.building as BuildingTag
+      found.building = { ...t, top: o.getWorldPosition(v).y + t.top }
+    }
+    if (o.userData.street) {
+      const t = o.userData.street as StreetTag
+      found.street = { ...t, y: o.getWorldPosition(v).y + t.y }
+    }
+    if (o.userData.backdrop) found.backdrop = { ...(o.userData.backdrop as { layers: number }), visible: visible(o) }
+    if (o.userData.plate) {
+      const m = o as THREE.Mesh
+      found.plateTop = m.getWorldPosition(v).y + (m.geometry as THREE.BoxGeometry).parameters.height / 2
+    }
+    if (typeof o.userData.panes === 'number') found.panes = o.userData.panes
   })
-  return { roofs, ground }
+  const { building, ...rest } = found
+  return { roofs, ground: rest.ground, building: building ? { ...building, plateTop: rest.plateTop, panes: rest.panes } : null, street: rest.street, backdrop: rest.backdrop }
 }
 
 /** An item's group in the scene: its uuid (changes when rebuilt) and world height */

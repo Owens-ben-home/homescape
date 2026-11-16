@@ -88,7 +88,7 @@ function tintGround(m: THREE.MeshStandardMaterial, base: string) {
 }
 
 /** y: height of the ground plane (on an upper floor it drops to the ground floor level so the lower floors show). */
-export function Ground({ night, y = 0 }: { night: boolean; y?: number }) {
+export function Ground({ night, y = 0, apartment = false }: { night: boolean; y?: number; apartment?: boolean }) {
   const [draft, setDraft] = useState<Draft | null>(null)
   const drawing = useRef(false)
   const rooms = () => activeLevel(useLayout.getState())?.rooms ?? []
@@ -146,7 +146,8 @@ export function Ground({ night, y = 0 }: { night: boolean; y?: number }) {
   const draftRect = draft ? rectOf(draft) : null
   const draftBad = draftRect && tool !== 'area' ? Boolean(draftProblem(draftRect, tool, rooms())) : false
   const ground = useRef<THREE.MeshStandardMaterial>(null)
-  const base = night ? C.groundNight : fps ? '#a9b596' : C.ground
+  // Apartment mode: the street far below the unit is paving, not the pale lavender of a house's world (it would wash out in the fog)
+  const base = apartment ? (night ? '#232a38' : '#8f8c86') : night ? C.groundNight : fps ? '#a9b596' : C.ground
   useFrame(() => {
     if (ground.current) tintGround(ground.current, base)
   })
@@ -157,7 +158,7 @@ export function Ground({ night, y = 0 }: { night: boolean; y?: number }) {
         rotation-x={-Math.PI / 2}
         position={[0, -0.125 + y, 0]}
         userData={{ ground: true }}
-        receiveShadow
+        receiveShadow={!apartment}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}

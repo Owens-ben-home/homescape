@@ -23,6 +23,7 @@ import { Ghost } from './Ghost'
 import { AMBIENT_FPS, ambientActive, ambientCount, markShadows, slowAmbientActive, registerInvalidate, sceneRef, takeShadowFrame } from './frame'
 import { perf } from './perf'
 import { AlarmFlash } from './AlarmFlash'
+import { Building } from './Building'
 import { FpsControls } from './FpsControls'
 import { ACTIVE_LEVEL, useFps } from './fps'
 import { People } from './People'
@@ -144,6 +145,11 @@ const SKY = {
   night: { hemiSky: '#6f7fe0', hemiGround: '#141936', hemi: 0.55, sun: '#a9b8ff', sunI: 0.6, sunPos: [-8, 18, 10], bg: C.skyNight },
 } as const
 /**
+ * Apartment mode (the riverside loft theme): a bluer day sky and a deep navy night, which the fog follows. The pale lavender of
+ * a house's world would wash out the street far below the unit.
+ */
+const APT_BG = { day: '#b6d1ea', night: '#0d1524' }
+/**
  * Real sun in walk mode (the ceiling blocks the sun from above, so it comes through windows and doors at the sun's
  * angle): skylight (hemisphere) dim inside, bright outside (the eye adapts); the sun is orange when low; warm light
  * bounced from the floor of the home.
@@ -216,7 +222,7 @@ function levelBounds(level: Level | null) {
  * true angle and aims at the center of the home, the shadow camera covers the home; ceilings cast shadows, so the sun
  * only enters through windows and doors.
  */
-function Lights({ night, shadows, real }: { night: boolean; shadows: boolean; real: RealSun | null }) {
+function Lights({ night, shadows, real, apartment }: { night: boolean; shadows: boolean; real: RealSun | null; apartment: boolean }) {
   const hemi = useRef<THREE.HemisphereLight>(null)
   const sun = useRef<THREE.DirectionalLight>(null)
   const get = useThree((s) => s.get)
@@ -251,7 +257,7 @@ function Lights({ night, shadows, real }: { night: boolean; shadows: boolean; re
     shown.current = ''
     shownBase.current = ''
     invalidate()
-  }, [night, real, indoor, bounds, invalidate])
+  }, [night, real, indoor, bounds, apartment, invalidate])
   useFrame((state, dt) => {
     const step = (cur: number, to: number) => (Math.abs(to - cur) < 0.003 ? to : cur + (to - cur) * Math.min(1, dt * 6))
     k.current = step(k.current, night ? 1 : 0)
@@ -268,8 +274,8 @@ function Lights({ night, shadows, real }: { night: boolean; shadows: boolean; re
     if (real) lastReal.current = real
     const R = lastReal.current
     perf.skyBlend = t
-    const D = SKY.day
-    const N = SKY.night
+    const D = apartment ? { ...SKY.day, bg: APT_BG.day } : SKY.day
+    const N = apartment ? { ...SKY.night, bg: APT_BG.night } : SKY.night
     // Day: between the bird's eye fixed sun and the walk mode real sun (g), then with night (t)
     const realHemi = R ? THREE.MathUtils.lerp(REAL.outdoor, REAL.indoor, ind.current) * (0.3 + 0.7 * R.level) : D.hemi
     if (hemi.current) {
@@ -355,24 +361,31 @@ function Lights({ night, shadows, real }: { night: boolean; shadows: boolean; re
  * fixed range (horizon).
  */
 const FOG = { near: 45, far: 130, ref: 32 }
-function FogRange() {
+/**
+ * Apartment mode: the street lies 10 m and more below the unit and the city stands out to 150 m, so the range starts further
+ * away (the street at 40-60 m from the camera is clear, the skyline at 100-150 m is hazy but there, the far end of the ground
+ * dissolves). It scales with the camera distance the same way.
+ */
+const FOG_APT = { near: 70, far: 230, ref: 32 }
+function FogRange({ apartment }: { apartment: boolean }) {
   useFrame(({ scene, camera, controls }) => {
     const fog = scene.fog
     if (!(fog instanceof THREE.Fog)) return
     const { plan, fps } = useView.getState()
     const clip = (camera as THREE.PerspectiveCamera).far
+    const F = apartment ? FOG_APT : FOG
     if (fps) {
-      fog.near = FOG.near
-      fog.far = FOG.far
+      fog.near = F.near
+      fog.far = F.far
     } else if (plan) {
       // Depth never passes the far plane: the fog is invisible (it is not removed; removing it recompiles every material)
       fog.near = clip * 2
       fog.far = clip * 3
     } else {
       const d = (controls as unknown as CameraControlsImpl | null)?.distance ?? 0
-      const s = Math.max(1, d / FOG.ref)
-      fog.far = Math.min(FOG.far * s, clip * 0.92)
-      fog.near = Math.min(FOG.near * s, fog.far * 0.9)
+      const s = Math.max(1, d / F.ref)
+      fog.far = Math.min(F.far * s, clip * 0.92)
+      fog.near = Math.min(F.near * s, fog.far * 0.9)
     }
     // In foggy weather the fog comes closer (not in the plan view)
     const wf = weatherLight.fog
@@ -559,8 +572,8 @@ function Contents() {
   if (!level) return null
   return (
     <>
-      <Lights night={night} shadows={!lite} real={real} />
-      <FogRange />
+      <Lights night={night} shadows={!lite} real={real} apartment={Boolean(apartment)} />
+      <FogRange apartment={Boolean(apartment)} />
       <Weather />
       <RoomLightSync night={night} real={real} />
       <AlarmFlash />
@@ -568,7 +581,8 @@ function Contents() {
       <Pets />
       <StreetLife />
       <SoundScape />
-      <Ground night={night} y={groundY} />
+      <Ground night={night} y={groundY} apartment={Boolean(apartment)} />
+      {apartment && <Building />}
       <Levels night={night} />
       <Roofs />
       <RoomHandles />

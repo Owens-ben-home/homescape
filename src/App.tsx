@@ -496,6 +496,7 @@ export default function App() {
       camera: () => cameraApi.debug(),
       // Camera commands and framing (tests do not import the camera module: after HMR it would be a second copy)
       cameraPan: (x, z) => cameraApi.pan(x, z),
+      cameraLookAt: (position, target, smooth) => cameraApi.lookAt(position, target, smooth),
       framePose: (rooms, pad) => cameraApi.framePose(rooms, pad),
       project: (x, y, z) => cameraApi.project(x, y, z),
       perf: () => import('@/scene/perf').then((m) => ({ ...m.perf })),

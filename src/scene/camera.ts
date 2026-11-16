@@ -379,6 +379,10 @@ export const cameraApi = {
   rotate: (deg: number) => {
     if (controls) void controls.rotate((deg * Math.PI) / 180, 0, true)
   },
+  /** Test hook: the camera at `position` looking at `target` (tests and screenshots; the focal shift stays as it is). */
+  lookAt: (position: [number, number, number], target: [number, number, number], smooth = false) => {
+    if (controls) void controls.setLookAt(...position, ...target, smooth)
+  },
   /** Panning with the arrow keys: x right, z forward (in the ground plane). */
   pan: (x: number, z: number) => {
     if (!controls) return

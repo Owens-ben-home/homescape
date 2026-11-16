@@ -14,6 +14,8 @@ interface Window {
     project: (x: number, y: number, z: number) => { x: number; y: number } | null
     /** Pans the camera (x right, z forward; on the ground plane) */
     cameraPan: (x: number, z: number) => void
+    /** Puts the orbit camera at `position` looking at `target` (immediately unless `smooth`; no focal shift change) */
+    cameraLookAt: (position: [number, number, number], target: [number, number, number], smooth?: boolean) => void
     /** Usual framing of rooms: target, camera position (before the focal shift), focal shift */
     framePose: (rooms: import('@/model/types').Room[], pad?: number) => { target: [number, number, number]; position: [number, number, number]; focal: [number, number, number] }
     placement: () => unknown
@@ -50,8 +52,18 @@ interface Window {
     pick: (x: number, y: number, z: number, dx: number, dy: number, dz: number) => Promise<{ y: number; distance: number; itemId: string | null } | null>
     /** Apartment mode (Layout.apartment): given { floor } or null it calls setApartment first; returns the current setting (null for a house) */
     apartment: (next?: { floor: number } | null) => { floor: number } | null
-    /** Roof groups in the scene (drawn or not) and the ground plane's world height (dev/sceneProbe.ts > structure) */
-    sceneStructure: () => Promise<{ roofs: number; ground: number | null } | null>
+    /**
+     * Roof groups in the scene (drawn or not), the ground plane's world height, the building under an apartment (world y of the unit's
+     * floor, floors, bays, side, the floor plate's top, panes), the street (world y of the setts, sidewalk width, street width)
+     * and the backdrop (layers, whether it is visible), each null when absent (dev/sceneProbe.ts > structure)
+     */
+    sceneStructure: () => Promise<{
+      roofs: number
+      ground: number | null
+      building: { top: number; floors: number; bays: number; side: string; length: number; depth: number; plateTop: number | null; panes: number } | null
+      street: { y: number; sidewalk: number; width: number } | null
+      backdrop: { layers: number; visible: boolean } | null
+    } | null>
     /** The item's group in the scene: its id (changes when rebuilt), world height, visible or not */
     itemObject: (id: string) => Promise<{ uuid: string; y: number; visible: boolean } | null>
     /** Open state of cabinets (scene/bins.ts): cabinet id -> open */

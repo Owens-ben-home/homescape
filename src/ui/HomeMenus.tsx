@@ -352,10 +352,13 @@ export function FloorSwitcher() {
             <Plus size={15} className="text-brand" />
             {t('Add a floor above')}
           </button>
-          <button type="button" id="floor-add-down" className={row(false)} onClick={() => add(true)}>
-            <Plus size={15} className="text-brand" />
-            {t('Add a basement')}
-          </button>
+          {/* A unit has no basement: its lowest floor is the building floor it is on (the block under it is built to that height) */}
+          {!apartment && (
+            <button type="button" id="floor-add-down" className={row(false)} onClick={() => add(true)}>
+              <Plus size={15} className="text-brand" />
+              {t('Add a basement')}
+            </button>
+          )}
           <label className="flex min-h-9 items-center gap-2 px-2.5 text-[12.5px] text-ink-2">
             <input type="checkbox" checked={copy} onChange={(e) => setCopy(e.target.checked)} />
             {t("Copy this floor's rooms to the new floor")}
