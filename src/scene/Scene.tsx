@@ -23,6 +23,7 @@ import { Ghost } from './Ghost'
 import { AMBIENT_FPS, ambientActive, ambientCount, markShadows, slowAmbientActive, registerInvalidate, sceneRef, takeShadowFrame } from './frame'
 import { perf } from './perf'
 import { AlarmFlash } from './AlarmFlash'
+import { Backdrop } from './Backdrop'
 import { Building } from './Building'
 import { FpsControls } from './FpsControls'
 import { ACTIVE_LEVEL, useFps } from './fps'
@@ -567,6 +568,8 @@ function Contents() {
   const fps = useView((s) => s.fps)
   // Apartment mode: the ground is always the street, far below the unit
   const apartment = useApartment()
+  const backdrop = useView((s) => s.backdrop)
+  const plan = useView((s) => s.plan)
   const groundY = apartment ? -Math.max(0, level?.elevation ?? 0) * FLOOR_H : lower || fps ? -Math.max(0, level?.elevation ?? 0) * FLOOR_H : 0
 
   if (!level) return null
@@ -583,6 +586,7 @@ function Contents() {
       <SoundScape />
       <Ground night={night} y={groundY} apartment={Boolean(apartment)} />
       {apartment && <Building />}
+      {apartment && backdrop && !lite && !plan && <Backdrop />}
       <Levels night={night} />
       <Roofs />
       <RoomHandles />

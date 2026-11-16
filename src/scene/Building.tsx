@@ -153,7 +153,9 @@ function Block({ plan }: { plan: BuildingPlan }) {
         const door = f === 0 && DOORS.includes(b)
         if (!door) {
           glass.push([f, b])
-          const r = rng(f * 131 + b * 17 + 5)
+          const r = rng(Math.imul(f * 131 + b * 17 + 5, 2654435761))
+          r()
+          r()
           if (r() < (f === 0 ? 0.15 : 0.3)) lit.push([f, b, 0.55 + r() * 0.45])
         }
         if (!BELTS.includes(f)) sills.push([f, b])
@@ -251,7 +253,7 @@ function Street({ plan }: { plan: BuildingPlan }) {
       { x0: -SW - CB - SRC, x1: -SW - CB, z0: mainZ1, z1: zFar }, // the cross street at the short end
     ]
     return { walk, curb, sett }
-  }, [L, D, xEnd, xStart, zFar, mainZ0, mainZ1])
+  }, [D, xEnd, xStart, zFar, mainZ0, mainZ1])
 
   return (
     <group userData={{ street: { y: SETT_Y, sidewalk: SW, width: SR, curb: WALK_Y } }}>

@@ -1,5 +1,6 @@
-// Building regression test (apartment mode): a brick block under the unit whose top is the unit's floor, a street at the
-// ground with a sidewalk, no traffic, everything gone when apartment mode is off.
+// Building and view regression test (apartment mode): a brick block under the unit whose top is the unit's floor, a street at the
+// ground with a sidewalk, no traffic, everything gone when apartment mode is off; the view backdrop mounts in apartment mode,
+// is absent otherwise and in lite mode, and follows its preference.
 // `npm run dev` must be running first. Run: node tools/building-view-check.mjs
 import { chromium } from 'playwright'
 
@@ -66,13 +67,26 @@ await settle()
 st = await S()
 ok(st.building === null && st.street === null && st.backdrop === null, 'Turning apartment mode off removes building, street and backdrop')
 
+// Backdrop
+await p.evaluate(() => window.__homescape.apartment({ floor: 4 }))
+await settle(1200)
+st = await S()
+ok(st.backdrop && st.backdrop.layers >= 2 && st.backdrop.visible, `The backdrop mounts in apartment mode (${st.backdrop?.layers} layers)`)
+await p.evaluate(() => window.__homescape.setBackdrop?.(false))
+await settle()
+st = await S()
+ok(st.backdrop === null, 'The View backdrop preference switches it off')
+await p.evaluate(() => window.__homescape.setBackdrop?.(true))
+await settle()
+st = await S()
+ok(st.backdrop !== null, 'and on again')
 await p.close()
 
 const pl = await open(true)
 await pl.evaluate(() => window.__homescape.apartment({ floor: 4 }))
 await pl.waitForTimeout(1200)
 st = await pl.evaluate(() => window.__homescape.sceneStructure())
-ok(st.building !== null, 'Lite mode keeps the building')
+ok(st.building !== null && st.backdrop === null, 'Lite mode keeps the building and skips the backdrop')
 await b.close()
 console.log(failures ? `${failures} FAILED` : 'all passed')
 process.exit(failures ? 1 : 0)

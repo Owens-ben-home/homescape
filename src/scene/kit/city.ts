@@ -186,7 +186,7 @@ export function paneTexture() {
       g.beginPath()
       g.moveTo(w * 0.1, 0)
       g.lineTo(w * 0.42, 0)
-      g.lineTo(w * 0.0, h * 0.62)
+      g.lineTo(0, h * 0.62)
       g.lineTo(0, h * 0.3)
       g.fill()
       g.fillStyle = '#000000'

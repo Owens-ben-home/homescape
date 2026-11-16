@@ -14,6 +14,8 @@ interface Window {
     project: (x: number, y: number, z: number) => { x: number; y: number } | null
     /** Pans the camera (x right, z forward; on the ground plane) */
     cameraPan: (x: number, z: number) => void
+    /** The "View backdrop" preference (apartment mode) */
+    setBackdrop: (on: boolean) => void
     /** Puts the orbit camera at `position` looking at `target` (immediately unless `smooth`; no focal shift change) */
     cameraLookAt: (position: [number, number, number], target: [number, number, number], smooth?: boolean) => void
     /** Usual framing of rooms: target, camera position (before the focal shift), focal shift */

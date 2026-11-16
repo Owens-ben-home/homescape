@@ -265,6 +265,7 @@ export function FloorSwitcher() {
   const active = useLayout((s) => activeLevel(s))
   const mode = useLayout((s) => s.mode)
   const lower = useView((s) => s.lowerFloors)
+  const backdrop = useView((s) => s.backdrop)
   const roof = useView((s) => s.roof)
   const homeId = useLayout((s) => activeHomeId(s))
   const roofStyle = useView((s) => s.roofStyle[homeId] ?? 'tile')
@@ -367,6 +368,13 @@ export function FloorSwitcher() {
             <input type="checkbox" checked={lower} onChange={(e) => useView.getState().setLowerFloors(e.target.checked)} />
             {t('Show lower floors below')}
           </label>
+          {/* The view out of an apartment's windows (scene/Backdrop.tsx); a per-device preference */}
+          {apartment && (
+            <label className="flex min-h-9 items-center gap-2 px-2.5 text-[12.5px] text-ink-2">
+              <input id="backdrop-toggle" type="checkbox" checked={backdrop} onChange={(e) => useView.getState().setBackdrop(e.target.checked)} />
+              {t('View backdrop')}
+            </label>
+          )}
           {/* Roof (scene/Roofs.tsx): on Auto it shows from afar and comes off when zooming in. An apartment has none. */}
           {!apartment && (
             <div className="grid gap-1.5 px-2.5 pb-1 pt-1.5">
