@@ -6,6 +6,7 @@ import { labelPoint, rectBounds } from '@/model/geometry'
 import { activeLevel, useLayout } from '@/model/layoutStore'
 import { presetRects, usePlacement } from '@/model/placement'
 import { DEFAULT_Y } from './kit/registry'
+import { appInsets, appOn } from '@/native/appMode'
 import { labelEntries } from './labels'
 import { peopleDebug } from './People'
 import { petsDebug } from './petsDebug'
@@ -73,8 +74,20 @@ export function LabelProjector() {
       }
       v.project(camera)
       const off = v.z > 1 || Math.abs(v.x) > 1.15 || Math.abs(v.y) > 1.15
-      const x = (v.x * 0.5 + 0.5) * size.width
-      const y = (-v.y * 0.5 + 0.5) * size.height
+      let x = (v.x * 0.5 + 0.5) * size.width
+      let y = (-v.y * 0.5 + 0.5) * size.height
+      // App mode: a label stays in the area the native shell leaves free (not under the status column or the native bars)
+      if (appOn()) {
+        const ins = appInsets()
+        if (!el.dataset.hw) el.dataset.hw = `${el.offsetWidth / 2},${el.offsetHeight / 2}`
+        const [hw, hh] = el.dataset.hw.split(',').map(Number)
+        const x0 = ins.left + hw + 4
+        const x1 = size.width - ins.right - hw - 4
+        const y0 = ins.top + hh + 4
+        const y1 = size.height - ins.bottom - hh - 4
+        if (x1 > x0) x = Math.min(x1, Math.max(x0, x))
+        if (y1 > y0) y = Math.min(y1, Math.max(y0, y))
+      }
       // Leave unchanged labels alone: needless style writes strain the browser.
       const tf = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) translate(-50%, -50%)`
       if (el.dataset.tf !== tf) {

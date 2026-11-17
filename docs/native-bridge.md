@@ -108,7 +108,7 @@ window.homescapeNative.dispatch({ type, ...args })
 | `setPref` | `key`: `labels`, `people`, `backdrop`, `innerWalls`; `value` bool | |
 | `search` | `query`, `cid` | answers with `searchResults` |
 | `highlight` | `itemId` or `null` | marks an item with the 3D selection outline for about 2.5 s (switches to its floor); `null` clears it |
-| `setInsets` | `top`, `bottom`, `left`, `right` (CSS px) | camera framing offsets for areas the shell covers; the home is framed and centred in the free area (ignored while `editInWeb` is on) |
+| `setInsets` | `top`, `bottom`, `left`, `right` (CSS px) | camera framing offsets for areas the shell covers; the home is framed and centred in the free area, and room and item labels are kept inside it so none sits under the shell's bars or a status column (ignored while `editInWeb` is on) |
 | `editInWeb` | `on` bool | `true` turns app mode off so the full web UI shows; `false` turns it back on |
 
 Unknown types are ignored and produce a `notice` with level `error`.
