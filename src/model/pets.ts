@@ -659,6 +659,29 @@ export function chooseGoal(c: ChooseInput): PetGoal {
   const water = of('water')
   const near = (list: { x: number; z: number }[], d: number) => list.map((p, i) => ({ p, i, d: Math.hypot(p.x - c.pos.x, p.z - c.pos.z) })).filter((q) => q.d < d).sort((a, b) => a.d - b.d)[0]
 
+  // Presence: a pet pinned to its room sensor's zone is calm: it lies at a preferred place (bed, nap spot, next to a person
+  // sitting in the zone) and moves only now and then (long stays), instead of roaming
+  if (c.region) {
+    if (food.length && !c.feeding && n.food < 0.3 && c.mode !== 'night') return at(nearest(food), 'eat', range(rnd, 7, 11), 'walk')
+    const sitting = c.people.filter((p) => p.sitting && inReg(p))
+    const beds = of('bed', 'house')
+    const naps = of('nap')
+    const sun = c.day ? of('sun') : []
+    const fav = !cat && beds.length ? beds : cat && naps.length ? naps : [...beds, ...naps, ...sun]
+    const here = c.last === 'sleep' || c.last === 'rest' || c.last === 'sit'
+    // next to a person who sits (the dog, now and then): lies down beside them
+    if (sitting.length && !cat && rnd() < 0.4) {
+      const q = sitting[Math.floor(rnd() * sitting.length)]
+      const beside = { x: q.x + 0.35, z: q.z + 0.45 }
+      if (inReg(beside)) return spot(beside.x, beside.z, 'rest', range(rnd, 90, 200), 'lie')
+    }
+    if (fav.length && (!here || rnd() < 0.3)) {
+      const p = rnd() < 0.7 ? nearest(fav) : pick(fav)
+      return at(p, 'sleep', range(rnd, 120, 300), 'walk', cat ? 'curl' : p.pose === 'curl' ? 'curl' : 'lie')
+    }
+    return spot(c.pos.x, c.pos.z, c.mode === 'night' ? 'sleep' : 'rest', range(rnd, 90, 240), c.mode === 'night' || !cat ? 'lie' : 'curl')
+  }
+
   // walk mode: the dog greets the player; the cat either rubs or runs away
   if (c.player && c.mode !== 'night') {
     const d = Math.hypot(c.player.x - c.pos.x, c.player.z - c.pos.z)

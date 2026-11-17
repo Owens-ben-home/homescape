@@ -513,6 +513,7 @@ export default function App() {
       roomLights: () => import('@/scene/roomLights').then((m) => m.lastRoomLights()),
       lighting: () => import('@/scene/sun').then((m) => ({ ...m.lightDebug })),
       people: () => import('@/scene/People').then((m) => JSON.parse(JSON.stringify(m.peopleDebug))),
+      peoplePlanAt: (now) => import('@/scene/People').then((m) => JSON.parse(JSON.stringify(m.peoplePlanAt(now)))),
       visualOn: (id) => import('@/model/activity').then((m) => m.visualDebug[id] ?? null),
       bins: () => import('@/scene/bins').then((m) => ({ ...m.binsDebug })),
       homeFlight: () => import('@/scene/camera').then((m) => JSON.parse(JSON.stringify(m.flightDebug))),

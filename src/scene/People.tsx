@@ -571,6 +571,19 @@ export function usePeoplePlan() {
   return { plan, level, apartment }
 }
 
+/** Test hook: the people plan as it would be at `now` (ms), from the current plan, entities and settings (no clock wait in tests) */
+export function peoplePlanAt(now: number): PeoplePlan | null {
+  const lay = useLayout.getState()
+  const level = activeLevel(lay)
+  if (!level) return null
+  const entities = useHa.getState().entities
+  const alarm = Object.values(entities).find((e) => e.entity_id.startsWith('alarm_control_panel.'))?.state
+  const pending = usePresenceUi.getState().pending
+  const corrections: Record<string, Correction> = {}
+  for (const [k, p] of Object.entries(pending)) if (p.kind === 'person' && k.startsWith('p:')) corrections[k.slice(2)] = { value: p.value, at: p.at }
+  return planPeople({ level, entities, registry: useHa.getState().registry, alarm, now, residents: useView.getState().residents, apartment: Boolean(lay.layout?.apartment), presence: lay.layout?.presence, simulated: usePresenceUi.getState().simulated, corrections })
+}
+
 /** Draws the people (in view mode, when enabled). */
 export function People() {
   const show = useView((s) => s.people)

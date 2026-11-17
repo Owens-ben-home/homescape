@@ -30,6 +30,8 @@ interface Window {
     lighting: () => Promise<{ sunDir: number[]; sunI: number; hemiI: number; fps: number; indoor: number }>
     /** Plan of the people at home (mode, count, rooms with motion, spots) and their current positions (scene/People.tsx) */
     people: () => Promise<unknown>
+    /** The people plan as it would be at `now` (ms), from the current entities (test hook: no waiting for the clock) */
+    peoplePlanAt: (now: number) => Promise<{ spots: { who?: string; x: number; z: number; pose: string; use?: string; roomId: string | null; fade?: number }[] }>
     /** Street life (scene/streetPlan.ts > streetDebug): cars, walkers, dog, kids; force('car' | 'walker' | 'dog' | 'kids' | 'leave') */
     street: () => Promise<unknown>
     /** Roof state (scene/roof.ts > roofView): whether the active floor's roof is down, roof visibility per floor */

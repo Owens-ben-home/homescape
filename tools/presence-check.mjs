@@ -42,6 +42,8 @@ const layout = {
       items: [
         { id: 'door-1', kind: 'door', x: 6.21, z: 3, rot: Math.PI / 2 },
         { id: 'sofa-1', kind: 'sofa', x: 4.5, z: 4.6, rot: Math.PI },
+        { id: 'tv-1', kind: 'tv', x: 5.7, z: 4, rot: -Math.PI / 2, entityId: 'media_player.tv' },
+        { id: 'arm-1', kind: 'armchair', x: 2, z: 4, rot: Math.PI / 2 },
         { id: 'chair-1', kind: 'chair', x: 7.5, z: 2.5, rot: 0 },
         { id: 'dog-1', kind: 'dog', x: 5, z: 5, rot: 0, name: 'Rex', entityId: 'sensor.rex_room', variant: 'golden' },
       ],
@@ -110,6 +112,83 @@ await settle(6000)
 ok((await persons()).length === 2, 'Both come back')
 s = await person('person-2')
 ok(s && s.slot === 3 && s.fade > 0.99, 'Sam keeps their outfit slot and is solid again')
+
+
+// --- Named people stay put: one spot per person and room, no wandering, moves only on real changes ---
+const DAY = new Date(2026, 9, 9, 15, 0, 0).getTime()
+const planAt = async (now) => (await H('peoplePlanAt', now)).spots.filter((x) => x.who)
+const spotOf = (sp, who) => sp.find((x) => x.who === who)
+const sameSpot = (u, v) => u && v && Math.hypot(u.x - v.x, u.z - v.z) < 0.01 && u.pose === v.pose
+await set('media_player.tv', 'off')
+await set('sensor.alex_room', 'living_room', { confidence: 0.95, source: 'sensor' })
+await set('sensor.sam_room', 'living_room', { confidence: 0.9, source: 'sensor' })
+await settle(1500)
+const first = await planAt(DAY)
+let steady = true
+for (let k = 1; k <= 30; k++) {
+  const sp = await planAt(DAY + k * 60_000)
+  if (!sameSpot(spotOf(sp, 'person-1'), spotOf(first, 'person-1')) || !sameSpot(spotOf(sp, 'person-2'), spotOf(first, 'person-2'))) steady = false
+}
+ok(first.length === 2 && steady, 'Two named people keep the same spot across 30 simulated minutes (no wandering)')
+await settle(8000)
+const live = [await person('person-1'), await person('person-2')]
+await settle(4000)
+const live2 = [await person('person-1'), await person('person-2')]
+ok(live.every((q, i) => q && live2[i] && Math.hypot(q.x - live2[i].x, q.z - live2[i].z) < 0.05), 'And the drawn avatars do not move across real plan ticks')
+ok(Math.hypot(first[0].x - first[1].x, first[0].z - first[1].z) > 0.3, 'Two people in one room take different spots')
+await p.reload()
+await p.waitForSelector('body[data-ready="1"]')
+await H('fakeLive')
+await settle(800)
+await set('media_player.tv', 'off')
+await set('sensor.alex_room', 'living_room', { confidence: 0.95, source: 'sensor' })
+await set('sensor.sam_room', 'living_room', { confidence: 0.9, source: 'sensor' })
+await set('sensor.rex_room', 'kitchen', { confidence: 0.8, source: 'sensor' })
+await settle(800)
+await p.evaluate((l) => {
+  const st = window.__homescape.getState().layout
+  st.setLayout(l)
+  st.setMode('view')
+}, layout)
+await H('presence', presence)
+await settle(1500)
+const again = await planAt(DAY)
+ok(sameSpot(spotOf(again, 'person-1'), spotOf(first, 'person-1')) && sameSpot(spotOf(again, 'person-2'), spotOf(first, 'person-2')), 'After a reload the same spots are chosen')
+
+// a weak (guessed) sensor value is not re-seated by a TV
+await set('sensor.sam_room', 'living_room', { confidence: 0.9, source: 'prior' })
+await settle(500)
+const samOff = spotOf(await planAt(DAY), 'person-2')
+// the TV turns on: whoever can watch it sits facing it
+await set('media_player.tv', 'on')
+await settle(800)
+const withTv = await planAt(DAY)
+const alexOn = spotOf(withTv, 'person-1')
+const samOn = spotOf(withTv, 'person-2')
+ok(alexOn.use === 'armchair' && !sameSpot(alexOn, spotOf(first, 'person-1')), `A strong new cue re-seats: Alex now sits facing the TV (${alexOn.use})`)
+ok(sameSpot(samOn, samOff), 'A guessed (prior) value is not re-seated by the TV')
+ok(Math.hypot(alexOn.x - samOn.x, alexOn.z - samOn.z) > 0.3, 'With the TV on the two still do not share a spot')
+await set('sensor.sam_room', 'living_room', { confidence: 0.9, source: 'sensor' })
+await set('media_player.tv', 'off')
+// the room changes: the person walks to the new room and settles there
+await set('sensor.alex_room', 'office', { confidence: 0.9, source: 'sensor' })
+await settle(800)
+const inOffice = spotOf(await planAt(DAY), 'person-1')
+ok(inOffice.roomId === 'office', 'A room change moves the person to the new room')
+let officeSteady = true
+for (let k = 1; k <= 20; k++) if (!sameSpot(spotOf(await planAt(DAY + k * 90_000), 'person-1'), inOffice)) officeSteady = false
+ok(officeSteady, 'And they stay at one spot there')
+// away is never drawn, with any cue and in apartment mode
+await set('media_player.tv', 'on')
+await set('sensor.alex_room', 'away', { confidence: 1, source: 'sensor' })
+await settle(800)
+let awayDrawn = false
+for (const dt of [0, 3_600_000, 8 * 3_600_000, 9 * 3_600_000]) if (spotOf(await planAt(DAY + dt), 'person-1')) awayDrawn = true
+ok(!awayDrawn && (await H('apartment')) != null, 'In apartment mode an away person is never drawn, even with the TV on or at night')
+await set('media_player.tv', 'off')
+await set('sensor.alex_room', 'living_room', { confidence: 0.95, source: 'sensor' })
+await set('sensor.sam_room', 'kitchen', { confidence: 0.9, source: 'sensor' })
+await settle(2500)
 
 // --- Pet bound to a sensor stays in the mapped zone ---
 const pets0 = (await H('presence')).pets

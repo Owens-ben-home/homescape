@@ -30,6 +30,26 @@ Dragging an avatar to another room in the scene calls the optional service `room
 The avatar stays at the drop point until the sensor confirms (about 8 seconds), then goes back to where the sensor says. If
 the service does not exist, nothing is sent and the avatar returns.
 
+## Behaviour: named people stay put
+
+A named person is not simulated as lively. When they enter a room or zone they take ONE spot and stay there; the spot is
+seeded by the person's key and the room, so a reload shows the same one. Order of preference:
+
+1. a seat facing a TV that is on;
+2. the chair of a desk or computer that is active (`itemOn`, a Ping sensor or an activity rule);
+3. a bed at night, in a bedroom;
+4. any seat (sofas and armchairs before desk chairs);
+5. a standing spot at a counter, washbasin or bookshelf, else the middle of the zone.
+
+They move only when the sensor's room or zone changes (they walk there through the doors), when the chosen spot stops being valid
+(the item was moved or removed), when a strong new cue appears in the same room (the TV turns on, the computer becomes active,
+bedtime), or when a drag correction places them. There is no periodic wandering and no roaming timer; the animation is idle only
+(breathing, small head turns, the seated and standing poses). When the cue goes away again (the TV turns off) the person goes back
+to their plain spot. A guessed (`prior`), held (`sticky`) or low confidence value keeps the fade and is not re-seated by weak cues.
+Two people in one room take different spots, in a stable order. `away`, `unknown` and `unavailable` are never drawn, in an apartment
+too, whatever else is on. A pet bound to a room sensor stays in its zone and is calm: it lies at a bed, a nap spot or beside a
+seated person, and moves only now and then (stays of one to five minutes). The anonymous simulation is unchanged.
+
 ## The plan data: `Layout.presence`
 
 ```json

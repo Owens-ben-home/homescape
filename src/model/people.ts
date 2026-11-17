@@ -1,5 +1,5 @@
 import type { Entities, HaRegistry, HassEntity } from '@/ha/types'
-import { ruleActive, ruleEntities } from './activity'
+import { itemOn, ruleActive, ruleEntities } from './activity'
 import { bindingsOf, itemLightIds } from './bindings'
 import { isActive } from '@/ha/derive'
 import { CATALOG, sizeOf } from './catalog'
@@ -736,20 +736,69 @@ function droppedSpot(level: Level, at: { x: number; z: number }): Spot {
   return { x: p.x, z: p.z, y: 0, rot: 0, pose: 'stand', roomId: room?.id ?? null }
 }
 
+/** Desks in use: computers that are on (desksInUse) plus a desk, computer or monitor item that is on by its entity or activity rule (itemOn) */
+function deskCues(level: Level, entities: Entities, registry: HaRegistry | null | undefined, now: number): DeskUse[] {
+  const out = desksInUse(level, entities, registry)
+  for (const it of level.items) {
+    if (!['desk', ...COMPUTERS].includes(it.kind) || !itemOn(it, entities, now)) continue
+    const roomId = roomAt(level.rooms, it.x, it.z)?.id
+    if (!roomId || out.some((d) => d.roomId === roomId && (!d.anchor || Math.hypot(d.anchor.x - it.x, d.anchor.z - it.z) < 1.5))) continue
+    out.push({ roomId, at: 0, anchor: { x: it.x, z: it.z } })
+  }
+  return out
+}
+
+/** Stable hash of a text (FNV-1a): the seed of a person's spot, so a reload shows the same one */
+const seedOf = (text: string) => {
+  let h = 2166136261
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619)
+  return h >>> 0
+}
+
+/**
+ * The one spot a named person settles at in a room or zone, and stays at: the pick is seeded by the person's key and the room, so
+ * it is the same on every plan tick and after a reload. It changes only with the inputs: another room, an item moved or removed,
+ * or a strong cue (a TV turned on in the room, a computer on, bedtime). With `strong` false (a guessed, held or unsure room
+ * value) the cues are ignored and the person keeps their plain seat. In order: a seat facing a TV that is on, the chair of a
+ * computer that is on, a bed at night, any seat (not at a desk first), a standing spot at a counter or a bookshelf, the middle of
+ * the zone. Spots in `used` are taken by the other people (they never overlap).
+ */
+function settledSpot(level: Level, room: Room, region: Region, p: NamedPerson, entities: Entities, used: Set<string>, cues: { strong: boolean; sleepy: boolean; desk?: DeskUse }): Spot {
+  const free = (s: Spot) => !used.has(key(s)) && inRegionRects(region, s)
+  const seed = seedOf(`${p.key}|${room.id}`)
+  const pick = (list: Spot[]) => (list.length ? list[seed % list.length] : undefined)
+  if (cues.strong) {
+    const tv = tvSeats(level, room, entities).find(free)
+    if (tv) return tv
+    if (cues.desk) {
+      const d = deskSpot(level, room, used, cues.desk.anchor)
+      if (free(d)) return d
+    }
+    const bed = cues.sleepy ? bedsIn(level, region).find((b) => !used.has(key(b))) : undefined
+    if (bed) return bed
+  }
+  const work = itemsIn(level, room).filter((i) => ['desk', 'computer', 'monitor', 'diningTable', 'roundTable'].includes(i.kind))
+  const all = seats(level, room).filter(free)
+  const lounge = all.filter((s) => s.use !== 'gamingChair' && !work.some((w) => Math.hypot(w.x - s.x, w.z - s.z) < 1.2))
+  const seat = pick(lounge) ?? pick(all)
+  if (seat) return seat
+  const stand = pick([...workSpots(level, room), ...browseSpots(level, room)].filter(free))
+  if (stand) return stand
+  return freeCentre(region, room, used)
+}
+
 /**
  * Named people (Layout.presence): each person's room sensor says which room value they are in; the value resolves to a room
- * (and zone) of the plan (presence.ts > resolveRegion) and the person takes one spot in it with the same spot logic as the
- * anonymous simulation, so they still look alive: asleep in a bed at night, at a computer that is on, facing a TV that is on,
- * beside the lamp turned on last, then moving on every WANDER_MS (counted from when the sensor last changed). Away, unknown,
- * unavailable and unmapped values draw nobody (apartment or not). People in `simulated` take the anonymous simulation's spots
- * instead; a drag correction not confirmed yet puts the person where they were dropped.
+ * (and zone) of the plan (presence.ts > resolveRegion) and the person takes ONE spot in it (settledSpot) and stays there: no
+ * wandering, no roaming timers. They move only when the sensor's room or zone changes, the spot becomes invalid, or a strong
+ * cue appears in the same room (a TV turned on, a computer on, bedtime); a drag correction puts them where they were dropped.
+ * Away, unknown, unavailable and unmapped values draw nobody (apartment or not; also for a person simulated by the anonymous
+ * simulation in an apartment). People in `simulated` take the anonymous simulation's spots instead.
  */
 function planNamed(input: PeopleInput, people: NamedPerson[]): PeoplePlan {
   const { level, entities, registry, alarm, now, presence } = input
   const sim = new Set(input.simulated ?? [])
-  const signals = roomSignals(level, entities, registry, now)
-  const anchorOf = new Map(signals.map((s) => [s.roomId, s.anchor]))
-  const desks = desksInUse(level, entities, registry)
+  const desks = deskCues(level, entities, registry, now)
   const sleepy = alarm === 'armed_night' || lateNight(now)
   const used = new Set<string>()
   const placed = new Map<string, Spot>()
@@ -758,8 +807,8 @@ function planNamed(input: PeopleInput, people: NamedPerson[]): PeoplePlan {
     used.add(key(s))
     placed.set(p.key, s)
   }
-  // Simulated people first (the sensor people then avoid their seats)
-  const simulated = people.filter((p) => sim.has(p.key))
+  // Simulated people first (the sensor people then avoid their seats); in an apartment one whose sensor says away is not drawn
+  const simulated = people.filter((p) => sim.has(p.key) && !(input.apartment && readRoomSensor(entities[p.roomEntity])?.inRoom === false))
   if (simulated.length) {
     const anon = planAnonymous({ ...input, presence: undefined, residents: simulated.length })
     simulated.forEach((p, i) => anon.spots[i] && take(p, { ...anon.spots[i], ...who(p), confidence: null, fade: 1 }))
@@ -775,24 +824,12 @@ function planNamed(input: PeopleInput, people: NamedPerson[]): PeoplePlan {
     const confidence = fix ? 1 : (reading?.confidence ?? null)
     const fade = presenceOpacity(confidence, fix ? 'manual_correction' : reading?.source)
     const room = region.room
-    const inside = (a?: { x: number; z: number }) => !a || inRegionRects(region, a)
     let spot: Spot
     if (fix) spot = droppedSpot(level, fix.at)
     else {
-      const bed = sleepy ? bedsIn(level, region).find((b) => !used.has(key(b))) : undefined
-      const desk = desks.find((d) => d.roomId === room.id && inside(d.anchor) && !deskUsed.has(d))
-      if (bed) spot = bed
-      else if (desk) {
-        deskUsed.add(desk)
-        spot = deskSpot(level, room, used, desk.anchor)
-        // A desk chair outside the zone does not belong to it
-        if (!inside(spot)) spot = activeSpot(level, room, used, undefined, 0, entities, region)
-      } else {
-        const since = reading?.changedAt || now
-        const turn = Math.max(0, Math.floor((now - since) / WANDER_MS))
-        const anchor = anchorOf.get(room.id)
-        spot = activeSpot(level, room, used, anchor && inside(anchor) ? anchor : undefined, turn, entities, region)
-      }
+      const desk = desks.find((d) => d.roomId === room.id && (!d.anchor || inRegionRects(region, d.anchor)) && !deskUsed.has(d))
+      spot = settledSpot(level, room, region, p, entities, used, { strong: fade >= 1, sleepy, desk })
+      if (desk && spot.use && ['chair', 'gamingChair', 'desk'].includes(spot.use) && fade >= 1) deskUsed.add(desk)
     }
     take(p, { ...spot, activity: fix ? 'idle' : (spot.activity ?? activityFor(spot, k, level, entities, now)), ...who(p), confidence, fade })
   })
